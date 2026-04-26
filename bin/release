@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+version="$(
+  python - <<'PY'
+from pathlib import Path
+import tomllib
+
+pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+print(pyproject["project"]["version"])
+PY
+)"
+tag="v${version}"
+
+if git rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null; then
+  printf 'error: tag already exists locally: %s\n' "${tag}" >&2
+  exit 1
+fi
+
+if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+  printf 'error: tag already exists on origin: %s\n' "${tag}" >&2
+  exit 1
+fi
+
+git tag "${tag}"
+printf 'created tag %s\n' "${tag}"
