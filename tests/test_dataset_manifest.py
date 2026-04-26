@@ -123,6 +123,36 @@ class DatasetManifestTests(unittest.TestCase):
             self.assertEqual(len(_read_jsonl(project_dir / "train_manifest.jsonl")), 7)
             self.assertEqual(len(_read_jsonl(project_dir / "validation_manifest.jsonl")), 2)
             self.assertEqual(len(_read_jsonl(project_dir / "test_manifest.jsonl")), 1)
+            self.assertEqual(_manifest_basenames(project_dir / "train_manifest.jsonl"), [f"sample-{index}.wav" for index in range(7)])
+            self.assertEqual(_manifest_basenames(project_dir / "validation_manifest.jsonl"), ["sample-7.wav", "sample-8.wav"])
+            self.assertEqual(_manifest_basenames(project_dir / "test_manifest.jsonl"), ["sample-9.wav"])
+
+    def test_build_split_manifests_splits_google_words_independent_of_project_path(self) -> None:
+        with tempfile.TemporaryDirectory() as first_tmp_dir:
+            with tempfile.TemporaryDirectory() as second_tmp_dir:
+                first_project_dir = Path(first_tmp_dir)
+                second_project_dir = Path(second_tmp_dir)
+                _write_google_project(first_project_dir, word="yes", sample_count=10)
+                _write_google_project(second_project_dir, word="yes", sample_count=10)
+
+                build_split_manifests(
+                    data_dir=first_project_dir / "data",
+                    train_ratio=70,
+                    validate_ratio=20,
+                    test_ratio=10,
+                )
+                build_split_manifests(
+                    data_dir=second_project_dir / "data",
+                    train_ratio=70,
+                    validate_ratio=20,
+                    test_ratio=10,
+                )
+
+                for manifest_name in ("train_manifest.jsonl", "validation_manifest.jsonl", "test_manifest.jsonl"):
+                    self.assertEqual(
+                        _manifest_basenames(first_project_dir / manifest_name),
+                        _manifest_basenames(second_project_dir / manifest_name),
+                    )
 
 
 def _write_wav(path: Path) -> None:
@@ -135,6 +165,23 @@ def _write_wav(path: Path) -> None:
 
 def _read_jsonl(path: Path) -> list[dict[str, object]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+
+
+def _write_google_project(project_dir: Path, *, word: str, sample_count: int) -> None:
+    (project_dir / "config.json").write_text(
+        json.dumps({"google_speech_commands": [word]}) + "\n",
+        encoding="utf-8",
+    )
+    data_dir = project_dir / "data"
+    word_dir = project_dir / "google-speech-commands" / word
+    data_dir.mkdir()
+    word_dir.mkdir(parents=True)
+    for index in range(sample_count):
+        _write_wav(word_dir / f"sample-{index}.wav")
+
+
+def _manifest_basenames(path: Path) -> list[str]:
+    return sorted(Path(str(entry["audio_filepath"])).name for entry in _read_jsonl(path))
 
 
 if __name__ == "__main__":

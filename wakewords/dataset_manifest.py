@@ -95,12 +95,16 @@ def _load_google_speech_command_entries(dataset_dir: Path, words: list[str]) -> 
                     "duration": duration_seconds,
                     "duration_ms": duration_ms,
                     "label": word,
+                    "split_key": f"{GOOGLE_SPEECH_COMMANDS_DIR}/{word}/{audio_path.name}",
                 }
             )
     return entries
 
 
 def _stable_entry_key(entry: dict[str, object]) -> str:
+    split_key = entry.get("split_key")
+    if isinstance(split_key, str):
+        return split_key
     audio_filepath = entry.get("audio_filepath")
     if not isinstance(audio_filepath, str):
         audio_filepath = json.dumps(entry, sort_keys=True)
