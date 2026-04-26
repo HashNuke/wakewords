@@ -1,11 +1,27 @@
 # Usage
 
+## Project Init
+
+Initialize a wakeword dataset project in the current directory:
+
+```sh
+uv run wakeword init
+```
+
+This creates:
+
+- `data/`
+- `background_audio/`
+- `config.json`
+
+The generated `config.json` contains an editable `custom_words` list at the top of the file and the Google Speech Commands v0.02 word list below it.
+
 ## Dataset Downloads
 
 Download and extract Google Speech Commands:
 
 ```sh
-uv run datatools download --google-speech-commands
+uv run wakeword download --google-speech-commands
 ```
 
 This writes the extracted dataset to:
@@ -17,7 +33,7 @@ data/google-speech-commands
 Download and extract the Common Voice 7.0 single-word target segment:
 
 ```sh
-COMMONVOICE_API_KEY=<api-key> uv run datatools download --common-voice-sw
+COMMONVOICE_API_KEY=<api-key> uv run wakeword download --common-voice-sw
 ```
 
 This writes the extracted dataset to:
@@ -29,7 +45,7 @@ data/common-voice-7-single-word
 Download and extract all supported external datasets:
 
 ```sh
-COMMONVOICE_API_KEY=<api-key> uv run datatools download --all
+COMMONVOICE_API_KEY=<api-key> uv run wakeword download --all
 ```
 
 By default, archives are downloaded into a temporary directory in the current
@@ -37,7 +53,7 @@ directory, extracted, and then deleted. To keep the downloaded archives, pass
 `--downloads-dir`:
 
 ```sh
-COMMONVOICE_API_KEY=<api-key> uv run datatools download --all --downloads-dir data/downloads
+COMMONVOICE_API_KEY=<api-key> uv run wakeword download --all --downloads-dir data/downloads
 ```
 
 `--downloads-dir` only controls where archives are retained. Extracted datasets

@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
-from datatools.manifest import ManifestStore
+from wakeword.manifest import ManifestStore
 from tqdm import tqdm
 
 
