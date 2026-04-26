@@ -178,6 +178,8 @@ in documentation.
 
 ## NeMo finetuning requirements
 
+> Model: commandrecognition_en_matchboxnet3x2x64_v2
+
 Reference:
 
 - <https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo/models/commandrecognition_en_matchboxnet3x2x64_v2?version=1.0.0rc1>
