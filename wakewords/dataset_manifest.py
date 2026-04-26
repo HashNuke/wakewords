@@ -4,7 +4,9 @@ import hashlib
 import json
 from pathlib import Path
 
+from wakewords.download import GOOGLE_SPEECH_COMMANDS_DIR
 from wakewords.manifest import load_word_manifest_entries
+from wakewords.manifest import probe_wav_duration
 
 
 def build_split_manifests(
@@ -13,6 +15,7 @@ def build_split_manifests(
     train_ratio: int,
     validate_ratio: int,
     test_ratio: int,
+    google_data_dir: Path | None = None,
     train_filename: str = "train_manifest.jsonl",
     validate_filename: str = "validation_manifest.jsonl",
     test_filename: str = "test_manifest.jsonl",
@@ -27,7 +30,7 @@ def build_split_manifests(
     if sum(ratios.values()) <= 0:
         raise ValueError("At least one split ratio must be > 0.")
 
-    grouped_entries = _load_grouped_entries(data_dir)
+    grouped_entries = _load_grouped_entries(data_dir=data_dir, google_data_dir=google_data_dir)
     split_entries = {"train": [], "validate": [], "test": []}
 
     for entries in grouped_entries.values():
@@ -49,7 +52,7 @@ def build_split_manifests(
     return output_paths
 
 
-def _load_grouped_entries(data_dir: Path) -> dict[str, list[dict[str, object]]]:
+def _load_grouped_entries(*, data_dir: Path, google_data_dir: Path | None) -> dict[str, list[dict[str, object]]]:
     grouped: dict[str, list[dict[str, object]]] = {}
     for word_dir in sorted(path for path in data_dir.iterdir() if path.is_dir() and path.name != "_noises_"):
         for entry in load_word_manifest_entries(word_dir):
@@ -57,7 +60,44 @@ def _load_grouped_entries(data_dir: Path) -> dict[str, list[dict[str, object]]]:
             if not isinstance(label, str):
                 continue
             grouped.setdefault(label, []).append(entry)
+
+    configured_google_words = _load_configured_google_words(data_dir.parent / "config.json")
+    speech_commands_dir = google_data_dir or data_dir.parent / GOOGLE_SPEECH_COMMANDS_DIR
+    if configured_google_words and speech_commands_dir.exists():
+        for entry in _load_google_speech_command_entries(speech_commands_dir, configured_google_words):
+            grouped.setdefault(str(entry["label"]), []).append(entry)
     return grouped
+
+
+def _load_configured_google_words(config_path: Path) -> list[str]:
+    if not config_path.exists():
+        return []
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    google_words = config.get("google_speech_commands")
+    if not isinstance(google_words, list):
+        return []
+    return [word for word in google_words if isinstance(word, str) and word]
+
+
+def _load_google_speech_command_entries(dataset_dir: Path, words: list[str]) -> list[dict[str, object]]:
+    entries: list[dict[str, object]] = []
+    for word in words:
+        if word == "_background_noise_":
+            continue
+        word_dir = dataset_dir / word
+        if not word_dir.is_dir():
+            continue
+        for audio_path in sorted(word_dir.glob("*.wav")):
+            duration_seconds, duration_ms = probe_wav_duration(audio_path)
+            entries.append(
+                {
+                    "audio_filepath": str(audio_path.resolve()),
+                    "duration": duration_seconds,
+                    "duration_ms": duration_ms,
+                    "label": word,
+                }
+            )
+    return entries
 
 
 def _stable_entry_key(entry: dict[str, object]) -> str:
