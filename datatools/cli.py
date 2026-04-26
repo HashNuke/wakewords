@@ -8,6 +8,7 @@ import fire
 
 from datatools.augment import augment_dataset
 from datatools.dataset_manifest import build_split_manifests
+from datatools.download import download_datasets
 from datatools.providers import get_provider
 
 logger = logging.getLogger(__name__)
@@ -124,6 +125,28 @@ class DataTools:
         for output in outputs.values():
             print(output)
 
+    def download(
+        self,
+        google_speech_commands: bool = False,
+        common_voice_sw: bool = False,
+        all: bool = False,
+        downloads_dir: str | None = None,
+        data_dir: str = "data",
+        verbose: bool = False,
+    ) -> None:
+        """Download and extract external speech datasets."""
+        _configure_logging(verbose=verbose)
+        outputs = download_datasets(
+            google_speech_commands=google_speech_commands,
+            common_voice_sw=common_voice_sw,
+            all=all,
+            downloads_dir=Path(downloads_dir) if downloads_dir else None,
+            data_dir=Path(data_dir),
+        )
+
+        for output in outputs:
+            print(output)
+
 
 def _read_words(path: Path) -> list[str]:
     return [
@@ -144,6 +167,9 @@ def _normalize_cli_flags() -> None:
         "--words-file": "--words_file",
         "--output-dir": "--output_dir",
         "--data-dir": "--data_dir",
+        "--downloads-dir": "--downloads_dir",
+        "--google-speech-commands": "--google_speech_commands",
+        "--common-voice-sw": "--common_voice_sw",
         "--noises-dir": "--noises_dir",
         "--train-ratio": "--train_ratio",
         "--validate-ratio": "--validate_ratio",
@@ -154,7 +180,14 @@ def _normalize_cli_flags() -> None:
         "--model-id": "--model_id",
         "--sample-rate": "--sample_rate",
     }
-    sys.argv = [flag_aliases.get(arg, arg) for arg in sys.argv]
+    sys.argv = [_normalize_flag(arg, flag_aliases) for arg in sys.argv]
+
+
+def _normalize_flag(arg: str, flag_aliases: dict[str, str]) -> str:
+    if arg.startswith("—"):
+        arg = f"--{arg[1:]}"
+    flag, separator, value = arg.partition("=")
+    return f"{flag_aliases.get(flag, flag)}{separator}{value}"
 
 
 def _configure_logging(*, verbose: bool) -> None:
