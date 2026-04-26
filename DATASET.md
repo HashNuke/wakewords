@@ -54,6 +54,18 @@ astra-cr1-t100-cafe-cafe-snr20.wav
 astra-cr1-t110-car-car-snr10.wav
 ```
 
+Each `data/<word>/` directory can also carry a local `manifest.jsonl` for generated and augmented files. The format matches the NeMo manifest shape with one extra field:
+
+- `duration_ms`: duration in milliseconds
+
+Example:
+
+```json
+{"audio_filepath": "astra-cr1-t100-clean-nonoise-nosnr.wav", "duration": 0.92, "duration_ms": 920, "label": "astra"}
+```
+
+Because these manifests live inside each word directory, `audio_filepath` is stored as a local filename there. When building dataset-level manifests for training, resolve those local filenames back to full paths.
+
 ### Speed augmentation with ffmpeg
 
 Use `ffmpeg`'s `atempo` audio filter to make generated speech faster or slower
@@ -178,6 +190,14 @@ Minimal example:
 {"audio_filepath": "/abs/path/audio/noise_020.wav", "duration": 1.00, "label": "unknown"}
 {"audio_filepath": "/abs/path/audio/sil_003.wav", "duration": 1.00, "label": "silence"}
 ```
+
+You can generate these combined manifests from the per-word manifests with:
+
+```sh
+uv run datatools manifest --train-ratio 70 --validate-ratio 20 --test-ratio 10
+```
+
+The split is deterministic and performed per label, with small rounding adjustments when an exact integer split is not possible.
 
 ### Audio expectations
 

@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
+from datatools.manifest import ManifestStore
 from tqdm import tqdm
 
 
@@ -23,6 +24,8 @@ class SourceSample:
     path: Path
     word: str
     voice_code: str
+    duration: float
+    duration_ms: int
 
 
 @dataclass(frozen=True)
@@ -55,7 +58,8 @@ def augment_dataset(
     if concurrency < 1:
         raise ValueError("concurrency must be >= 1")
 
-    sources = _collect_sources(data_dir)
+    manifests = ManifestStore()
+    sources = _collect_sources(data_dir, manifests)
     if not sources:
         raise ValueError(f"No clean generated files found under {data_dir}.")
 
@@ -68,7 +72,7 @@ def augment_dataset(
 
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
         futures = [
-            executor.submit(_run_task, task=task, overwrite=overwrite)
+            executor.submit(_run_task, task=task, manifests=manifests, overwrite=overwrite)
             for task in tasks
         ]
         with tqdm(total=len(futures), unit="file") as bar:
@@ -79,7 +83,7 @@ def augment_dataset(
     return sorted(outputs)
 
 
-def _collect_sources(data_dir: Path) -> list[SourceSample]:
+def _collect_sources(data_dir: Path, manifests: ManifestStore) -> list[SourceSample]:
     sources: list[SourceSample] = []
     for wav_path in sorted(data_dir.glob("*/*.wav")):
         if wav_path.parent.name == "_noises_":
@@ -88,7 +92,19 @@ def _collect_sources(data_dir: Path) -> list[SourceSample]:
         if parsed is None:
             continue
         word, voice_code = parsed
-        sources.append(SourceSample(path=wav_path, word=word, voice_code=voice_code))
+        manifest = manifests.for_word_dir(wav_path.parent)
+        entry = manifest.get(wav_path)
+        if entry is None:
+            entry = manifest.record(audio_path=wav_path, label=word)
+        sources.append(
+            SourceSample(
+                path=wav_path,
+                word=word,
+                voice_code=voice_code,
+                duration=float(entry["duration"]),
+                duration_ms=int(entry["duration_ms"]),
+            )
+        )
     return sources
 
 
@@ -110,9 +126,11 @@ def _build_tasks(
     return tasks
 
 
-def _run_task(*, task: AugmentTask, overwrite: bool) -> Path:
+def _run_task(*, task: AugmentTask, manifests: ManifestStore, overwrite: bool) -> Path:
     output_path = task.output_path
+    manifest = manifests.for_word_dir(output_path.parent)
     if output_path.exists() and not overwrite:
+        manifest.record(audio_path=output_path, label=task.source.word)
         return output_path
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -122,9 +140,10 @@ def _run_task(*, task: AugmentTask, overwrite: bool) -> Path:
         speech_temp_path = _tempo_adjust(task.source.path, task.tempo)
         if task.noise is None:
             output_path.write_bytes(speech_temp_path.read_bytes())
+            manifest.record(audio_path=output_path, label=task.source.word)
             return output_path
 
-        duration = _wav_duration_seconds(speech_temp_path)
+        duration = task.source.duration / task.tempo
         noise_temp_path = _extract_noise_segment(
             source_path=task.source.path,
             noise_path=task.noise,
@@ -138,6 +157,7 @@ def _run_task(*, task: AugmentTask, overwrite: bool) -> Path:
             output_path=output_path,
             snr_db=task.snr or 0,
         )
+        manifest.record(audio_path=output_path, label=task.source.word)
         return output_path
     finally:
         if speech_temp_path is not None:
@@ -252,11 +272,6 @@ def _write_wav_samples(path: Path, params: tuple[int, int, int], samples: list[i
         wav_file.setsampwidth(sample_width)
         wav_file.setframerate(frame_rate)
         wav_file.writeframes(struct.pack(f"<{len(samples)}h", *samples))
-
-
-def _wav_duration_seconds(path: Path) -> float:
-    with wave.open(str(path), "rb") as wav_file:
-        return wav_file.getnframes() / wav_file.getframerate()
 
 
 def _media_duration_seconds(path: Path) -> float:

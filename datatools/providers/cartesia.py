@@ -9,6 +9,7 @@ from pathlib import Path
 
 from cartesia import Cartesia
 
+from datatools.manifest import ManifestStore
 from datatools.providers.base import Voice
 from datatools.registry import VoiceRegistry
 
@@ -70,6 +71,7 @@ class CartesiaProvider:
     ) -> list[Path]:
         voices = self._select_voices(voice=voice, all_voices=all_voices, lang=lang)
         registry = VoiceRegistry(output_dir / f"voices.{self.name}.txt")
+        manifests = ManifestStore()
         for v in voices:
             registry.short_code(self.short_code, v.id)
         tasks = [
@@ -88,6 +90,7 @@ class CartesiaProvider:
                     task=task,
                     output_dir=output_dir,
                     registry=registry,
+                    manifests=manifests,
                     lang=lang,
                     model_id=model_id,
                     sample_rate=sample_rate,
@@ -134,6 +137,7 @@ class CartesiaProvider:
         task: "_GenerationTask",
         output_dir: Path,
         registry: VoiceRegistry,
+        manifests: ManifestStore,
         lang: str | None,
         model_id: str,
         sample_rate: int,
@@ -148,6 +152,7 @@ class CartesiaProvider:
         filename = f"{word_slug}-{voice_code}-t100-clean-nonoise-nosnr.wav"
         output_path = word_dir / filename
         if output_path.exists() and not overwrite:
+            manifests.for_word_dir(word_dir).record(audio_path=output_path, label=word_slug)
             return output_path
 
         with _client() as client:
@@ -170,6 +175,8 @@ class CartesiaProvider:
                 **generate_kwargs,
             )
             response.write_to_file(str(output_path))
+
+        manifests.for_word_dir(word_dir).record(audio_path=output_path, label=word_slug)
 
         return output_path
 

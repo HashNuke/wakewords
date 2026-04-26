@@ -7,6 +7,7 @@ from pathlib import Path
 import fire
 
 from datatools.augment import augment_dataset
+from datatools.dataset_manifest import build_split_manifests
 from datatools.providers import get_provider
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,32 @@ class DataTools:
         for output in outputs:
             print(output)
 
+    def manifest(
+        self,
+        data_dir: str = "data",
+        train_ratio: int = 70,
+        validate_ratio: int = 20,
+        test_ratio: int = 10,
+        train_filename: str = "train_manifest.jsonl",
+        validate_filename: str = "validation_manifest.jsonl",
+        test_filename: str = "test_manifest.jsonl",
+        verbose: bool = False,
+    ) -> None:
+        """Build train/validation/test manifests from per-word manifests."""
+        _configure_logging(verbose=verbose)
+        outputs = build_split_manifests(
+            data_dir=Path(data_dir),
+            train_ratio=train_ratio,
+            validate_ratio=validate_ratio,
+            test_ratio=test_ratio,
+            train_filename=train_filename,
+            validate_filename=validate_filename,
+            test_filename=test_filename,
+        )
+
+        for output in outputs.values():
+            print(output)
+
 
 def _read_words(path: Path) -> list[str]:
     return [
@@ -118,6 +145,12 @@ def _normalize_cli_flags() -> None:
         "--output-dir": "--output_dir",
         "--data-dir": "--data_dir",
         "--noises-dir": "--noises_dir",
+        "--train-ratio": "--train_ratio",
+        "--validate-ratio": "--validate_ratio",
+        "--test-ratio": "--test_ratio",
+        "--train-filename": "--train_filename",
+        "--validate-filename": "--validate_filename",
+        "--test-filename": "--test_filename",
         "--model-id": "--model_id",
         "--sample-rate": "--sample_rate",
     }

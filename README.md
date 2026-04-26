@@ -63,6 +63,12 @@ uv run datatools generate --concurrency 4
 
 By default, generated files are written under `data/<word>/`.
 
+Each word directory also gets a `manifest.jsonl` file. Entries use the NeMo manifest shape with an extra `duration_ms` field:
+
+```json
+{"audio_filepath": "astra-cr1-t100-clean-nonoise-nosnr.wav", "duration": 0.92, "duration_ms": 920, "label": "astra"}
+```
+
 Place background-noise clips under `data/_noises_/` as `.wav` files such as `cafe.wav`, `car.wav`, or `office.wav`. The basename is used in augmented filenames.
 
 Generate tempo-only and tempo+noise variants in place:
@@ -72,3 +78,16 @@ uv run datatools augment
 ```
 
 The augment command scans `data/<word>/` for clean files named like `astra-cr1-t100-clean-nonoise-nosnr.wav`, keeps the existing voice code, picks a deterministic stretch from each noise clip, and writes derived files back into the same word directory.
+It reuses the clean source metadata from that word directory's `manifest.jsonl` and probes each augmented output separately before recording its final duration.
+
+Build dataset-level train, validation, and test manifests from the per-word manifests:
+
+```sh
+uv run datatools manifest --train-ratio 70 --validate-ratio 20 --test-ratio 10
+```
+
+This command reads `data/<word>/manifest.jsonl`, resolves the local filenames to full paths, performs a deterministic per-label split, and writes:
+
+- `data/train_manifest.jsonl`
+- `data/validation_manifest.jsonl`
+- `data/test_manifest.jsonl`
