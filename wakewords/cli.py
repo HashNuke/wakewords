@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import sys
 from pathlib import Path
@@ -49,7 +50,8 @@ class DataTools:
     def generate(
         self,
         provider: str = "cartesia",
-        words_file: str = "extended-words.txt",
+        project_dir: str = ".",
+        words_file: str | None = None,
         text: str | None = None,
         output_dir: str = "data",
         voice: str | None = None,
@@ -63,19 +65,21 @@ class DataTools:
         overwrite: bool = False,
         verbose: bool = False,
     ) -> None:
-        """Generate TTS audio for one text string or each line in a words file."""
+        """Generate TTS audio for one text string or custom words in the project config."""
         _configure_logging(verbose=verbose)
         if concurrency < 1:
             raise ValueError("concurrency must be >= 1")
 
-        prompts = [text] if text else _read_words(Path(words_file))
+        project_path = Path(project_dir)
+        config_path = project_path / "config.json"
+        prompts = [text] if text else _load_generate_prompts(config_path=config_path, words_file=Path(words_file) if words_file else None)
         if not prompts:
-            raise ValueError("No text to generate. Provide --text or a non-empty --words-file.")
+            raise ValueError("No text to generate. Provide --text or add custom_words to config.json.")
 
-        tts = get_provider(provider)
+        tts = get_provider(provider, config_path=config_path)
         outputs = tts.generate(
             prompts=prompts,
-            output_dir=Path(output_dir),
+            output_dir=_resolve_project_path(project_path, Path(output_dir)),
             voice=voice,
             voices=voices,
             all_voices=all_voices,
@@ -229,6 +233,25 @@ def _read_words(path: Path) -> list[str]:
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.strip().startswith("#")
     ]
+
+
+def _load_generate_prompts(*, config_path: Path, words_file: Path | None) -> list[str]:
+    if words_file is not None:
+        return _read_words(words_file)
+
+    if not config_path.exists():
+        raise FileNotFoundError(f"Project config not found: {config_path}")
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    custom_words = config.get("custom_words")
+    if not isinstance(custom_words, list):
+        return []
+    return [word for word in custom_words if isinstance(word, str) and word]
+
+
+def _resolve_project_path(project_dir: Path, path: Path) -> Path:
+    if path.is_absolute():
+        return path
+    return project_dir / path
 
 
 def main() -> None:

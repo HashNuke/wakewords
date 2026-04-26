@@ -28,13 +28,13 @@ Custom TTS providers can be registered from `config.json`. See [`docs/custom-pro
 
 ### Generate English Data
 
-Generate clean samples for your custom words using every available English voice:
+Generate clean samples for the `custom_words` in the project `config.json` using every available English voice:
 
 ```sh
 uv run wakewords generate --lang en --all-voices
 ```
 
-Generated files are written under `data/<word>/`.
+Generated files are written under the project's `data/<word>/`.
 
 ### Augment The Dataset
 

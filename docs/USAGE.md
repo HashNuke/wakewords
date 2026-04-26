@@ -50,10 +50,29 @@ uv run wakewords voices --lang en
 uv run wakewords voices --lang en_GB
 ```
 
-Generate one WAV per word with the provider's first voice:
+Generate one WAV per word in the project `config.json` `custom_words` list with
+the provider's first voice:
 
 ```sh
 uv run wakewords generate
+```
+
+Run generation for a project directory other than the current directory:
+
+```sh
+uv run wakewords generate --project-dir path/to/project
+```
+
+Generate one explicit text prompt instead of `custom_words`:
+
+```sh
+uv run wakewords generate --text dexa
+```
+
+Generate from a legacy words file instead of `custom_words`:
+
+```sh
+uv run wakewords generate --words-file words.txt
 ```
 
 Generate with a specific voice:
@@ -89,9 +108,9 @@ uv run wakewords generate --concurrency 4
 Custom TTS providers can be registered from `config.json`. See
 `docs/custom-providers.md`.
 
-By default, generated files are written under `data/<word>/`. Each word directory
-also gets a `manifest.jsonl` file. Entries use the NeMo manifest shape with an
-extra `duration_ms` field:
+By default, generated files are written under the project's `data/<word>/`. Each
+word directory also gets a `manifest.jsonl` file. Entries use the NeMo manifest
+shape with an extra `duration_ms` field:
 
 ```json
 {"audio_filepath": "astra-cr1-t100-clean-nonoise-nosnr.wav", "duration": 0.92, "duration_ms": 920, "label": "astra"}

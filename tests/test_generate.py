@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
+from wakewords.cli import DataTools
 from wakewords.providers.base import Voice
 from wakewords.providers.cartesia import CartesiaProvider
 
@@ -31,6 +36,57 @@ class GenerateVoiceSelectionTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             provider._select_voices(voice="v1", voices=2, all_voices=False, lang=None)
+
+
+class GenerateCommandTests(unittest.TestCase):
+    def test_generate_reads_custom_words_from_project_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            (project_dir / "config.json").write_text(
+                json.dumps({"custom_words": ["dexa", "tincan"], "google_speech_commands": ["yes"]}) + "\n",
+                encoding="utf-8",
+            )
+            provider = _FakeProvider()
+
+            with mock.patch("wakewords.cli.get_provider", return_value=provider) as get_provider:
+                DataTools().generate(project_dir=str(project_dir))
+
+            get_provider.assert_called_once_with("cartesia", config_path=project_dir / "config.json")
+            self.assertEqual(provider.prompts, ["dexa", "tincan"])
+            self.assertEqual(provider.output_dir, project_dir / "data")
+
+    def test_generate_text_overrides_project_config_words(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            (project_dir / "config.json").write_text(
+                json.dumps({"custom_words": ["dexa"]}) + "\n",
+                encoding="utf-8",
+            )
+            provider = _FakeProvider()
+
+            with mock.patch("wakewords.cli.get_provider", return_value=provider):
+                DataTools().generate(project_dir=str(project_dir), text="single")
+
+            self.assertEqual(provider.prompts, ["single"])
+
+    def test_generate_rejects_empty_custom_words(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            (project_dir / "config.json").write_text(json.dumps({"custom_words": []}) + "\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "custom_words"):
+                DataTools().generate(project_dir=str(project_dir))
+
+
+class _FakeProvider:
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+        self.output_dir: Path | None = None
+
+    def generate(self, **kwargs: object) -> list[Path]:
+        self.prompts = list(kwargs["prompts"])
+        self.output_dir = kwargs["output_dir"]
+        return []
 
 
 if __name__ == "__main__":
