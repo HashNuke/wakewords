@@ -19,6 +19,37 @@ The generated `config.json` contains an editable `custom_words` list at the top 
 
 ## Audio Generation
 
+The default TTS provider is Cartesia. Set `CARTESIA_API_KEY` before using it:
+
+```sh
+export CARTESIA_API_KEY=your-api-key
+```
+
+List voices from the default TTS provider:
+
+```sh
+uv run wakewords voices
+```
+
+List every available voice:
+
+```sh
+uv run wakewords voices --all
+```
+
+Fetch more voice pages:
+
+```sh
+uv run wakewords voices --pages 3
+```
+
+Filter voices by language or locale:
+
+```sh
+uv run wakewords voices --lang en
+uv run wakewords voices --lang en_GB
+```
+
 Generate one WAV per word with the provider's first voice:
 
 ```sh
@@ -41,6 +72,29 @@ Generate with every matching voice:
 
 ```sh
 uv run wakewords generate --lang en --all-voices
+```
+
+Generate with the first five voices returned by the provider:
+
+```sh
+uv run wakewords generate --voices 5
+```
+
+Increase request concurrency:
+
+```sh
+uv run wakewords generate --concurrency 4
+```
+
+Custom TTS providers can be registered from `config.json`. See
+`docs/custom-providers.md`.
+
+By default, generated files are written under `data/<word>/`. Each word directory
+also gets a `manifest.jsonl` file. Entries use the NeMo manifest shape with an
+extra `duration_ms` field:
+
+```json
+{"audio_filepath": "astra-cr1-t100-clean-nonoise-nosnr.wav", "duration": 0.92, "duration_ms": 920, "label": "astra"}
 ```
 
 ## Dataset Downloads
@@ -73,6 +127,11 @@ archive extraction.
 
 ## Augmentation
 
+By default, augmentation reads background-noise clips from `background_audio/`.
+If that directory has a `manifest.jsonl` with `{ "audio": "<filename>",
+"duration_ms": <milliseconds> }` entries, augment uses those durations instead
+of probing the background files. The basename is used in augmented filenames.
+
 Generate noisy tempo variants from clean generated word audio:
 
 ```sh
@@ -84,6 +143,13 @@ the number of tempo, background-noise, and SNR choices per voice as voice count
 increases. For `373` voices, this selects `5 tempos x 2 noises x 1 SNR = 10`
 augmented variants per voice, for about `4103` total samples including the clean
 originals.
+
+The augment command scans `data/<word>/` for clean files named like
+`astra-cr1-t100-clean-nonoise-nosnr.wav`, keeps the existing voice code, picks
+deterministic subsets of tempo, background noise, and SNR values for each voice,
+and writes derived files back into the same word directory. It reuses the clean
+source metadata from that word directory's `manifest.jsonl` and probes each
+augmented output separately before recording its final duration.
 
 To change the target:
 
@@ -109,6 +175,20 @@ Build split manifests first:
 ```sh
 uv run wakewords manifest
 ```
+
+To change split ratios:
+
+```sh
+uv run wakewords manifest --train-ratio 70 --validate-ratio 20 --test-ratio 10
+```
+
+This command reads `data/<word>/manifest.jsonl`, resolves local audio filenames
+to full paths, performs a deterministic per-label split, and writes project-root
+manifests:
+
+- `train_manifest.jsonl`
+- `validation_manifest.jsonl`
+- `test_manifest.jsonl`
 
 Install package dependencies:
 

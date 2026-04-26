@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import random
 import struct
 import subprocess
 import tempfile
@@ -234,20 +235,16 @@ def _shape_score(shape: tuple[int, int, int]) -> tuple[int, int, int]:
 
 
 def _select_subset[T](values: tuple[T, ...], count: int, *, source: SourceSample, category: str) -> tuple[T, ...]:
-    ranked = sorted(
-        values,
-        key=lambda value: _selection_key(source=source, category=category, value=value),
-    )
-    return tuple(ranked[:count])
+    rng = random.Random(_selection_seed(source=source, category=category))
+    shuffled = list(values)
+    rng.shuffle(shuffled)
+    return tuple(shuffled[:count])
 
 
-def _selection_key(*, source: SourceSample, category: str, value: object) -> str:
-    if isinstance(value, NoiseSample):
-        value_key = str(value.path)
-    else:
-        value_key = str(value)
-    key = "|".join((source.word, source.voice_code, category, value_key))
-    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+def _selection_seed(*, source: SourceSample, category: str) -> int:
+    key = "|".join((source.word, source.voice_code, category))
+    digest = hashlib.sha256(key.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big")
 
 
 def _run_task(*, task: AugmentTask, manifests: ManifestStore, overwrite: bool) -> Path:

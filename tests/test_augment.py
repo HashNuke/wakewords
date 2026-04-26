@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from wakewords.augment import NoiseSample, SourceSample, _build_tasks, _collect_noises, _combo_shape
+from wakewords.augment import NoiseSample, SourceSample, _build_tasks, _collect_noises, _combo_shape, _select_subset
 
 
 class AugmentTests(unittest.TestCase):
@@ -76,6 +76,24 @@ class AugmentTests(unittest.TestCase):
             ),
             (3, 1, 1),
         )
+
+    def test_select_subset_shuffles_deterministically_per_voice_and_category(self) -> None:
+        source = SourceSample(
+            path=Path("data/yes/yes-cr1-t100-clean-nonoise-nosnr.wav"),
+            word="yes",
+            voice_code="cr1",
+            duration=1.0,
+            duration_ms=1000,
+        )
+        values = (0.85, 0.90, 0.95, 1.0, 1.05, 1.10, 1.15)
+
+        first = _select_subset(values, 5, source=source, category="tempo")
+        second = _select_subset(values, 5, source=source, category="tempo")
+
+        self.assertEqual(first, second)
+        self.assertEqual(len(first), 5)
+        self.assertEqual(len(set(first)), 5)
+        self.assertNotEqual(first, values[:5])
 
 
 if __name__ == "__main__":
