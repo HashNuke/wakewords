@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from wakeword.providers.base import TTSProvider
-from wakeword.providers.cartesia import CartesiaProvider
+from wakewords.providers.base import TTSProvider
+from wakewords.providers.cartesia import CartesiaProvider
 
 
 def get_provider(name: str) -> TTSProvider:

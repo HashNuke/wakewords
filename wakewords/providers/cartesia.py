@@ -9,9 +9,9 @@ from pathlib import Path
 
 from cartesia import Cartesia
 
-from wakeword.manifest import ManifestStore
-from wakeword.providers.base import Voice
-from wakeword.registry import VoiceRegistry
+from wakewords.manifest import ManifestStore
+from wakewords.providers.base import Voice
+from wakewords.registry import VoiceRegistry
 
 logger = logging.getLogger(__name__)
 

@@ -6,18 +6,18 @@ from pathlib import Path
 
 import fire
 
-from wakeword.augment import augment_dataset
-from wakeword.dataset_manifest import build_split_manifests
-from wakeword.download import download_datasets
-from wakeword.project import init_project
-from wakeword.providers import get_provider
+from wakewords.augment import augment_dataset
+from wakewords.dataset_manifest import build_split_manifests
+from wakewords.download import download_datasets
+from wakewords.project import init_project
+from wakewords.providers import get_provider
 
 logger = logging.getLogger(__name__)
 
 
 class DataTools:
     def init(self, directory: str = ".") -> None:
-        """Initialize a wakeword dataset project directory."""
+        """Initialize a wakewords dataset project directory."""
         outputs = init_project(Path(directory))
         for output in outputs:
             print(output)

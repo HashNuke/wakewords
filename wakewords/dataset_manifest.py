@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from wakeword.manifest import load_word_manifest_entries
+from wakewords.manifest import load_word_manifest_entries
 
 
 def build_split_manifests(

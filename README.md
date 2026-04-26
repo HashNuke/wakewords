@@ -1,15 +1,15 @@
-# wakeword
+# wakewords
 
 Tools and notes for building an expanded speech-command dataset from Google Speech Commands plus custom wake words.
 
 ## Data Tools
 
-The `wakeword` CLI is installed through the `uv` project.
+The `wakewords` CLI is installed through the `uv` project.
 
 Initialize a dataset project in the current directory:
 
 ```sh
-uv run wakeword init
+uv run wakewords init
 ```
 
 This creates an empty `data/` directory, a `background_audio/` directory populated with Google Speech Commands background-noise clips and a `manifest.jsonl` duration manifest, and a prettified `config.json` file containing the Google Speech Commands v0.02 word list and an example custom word.
@@ -17,56 +17,56 @@ This creates an empty `data/` directory, a `background_audio/` directory populat
 List voices from the default TTS provider:
 
 ```sh
-uv run wakeword voices
+uv run wakewords voices
 ```
 
 List every available voice:
 
 ```sh
-uv run wakeword voices --all
+uv run wakewords voices --all
 ```
 
 Fetch more voice pages:
 
 ```sh
-uv run wakeword voices --pages 3
+uv run wakewords voices --pages 3
 ```
 
 Filter voices by language or locale:
 
 ```sh
-uv run wakeword voices --lang en
-uv run wakeword voices --lang en_GB
+uv run wakewords voices --lang en
+uv run wakewords voices --lang en_GB
 ```
 
 Generate one WAV per line in `extended-words.txt` using the first available Cartesia voice:
 
 ```sh
-uv run wakeword generate
+uv run wakewords generate
 ```
 
 Generate with a specific voice id or exact voice name:
 
 ```sh
-uv run wakeword generate --voice <voice-id-or-name>
+uv run wakewords generate --voice <voice-id-or-name>
 ```
 
 Generate with every available voice:
 
 ```sh
-uv run wakeword generate --all-voices
+uv run wakewords generate --all-voices
 ```
 
 Generate using voices filtered by language or locale:
 
 ```sh
-uv run wakeword generate --lang en
+uv run wakewords generate --lang en
 ```
 
 Increase request concurrency:
 
 ```sh
-uv run wakeword generate --concurrency 4
+uv run wakewords generate --concurrency 4
 ```
 
 By default, generated files are written under `data/<word>/`.
@@ -82,7 +82,7 @@ By default, augmentation reads background-noise clips from `background_audio/`. 
 Generate tempo-only and tempo+noise variants in place:
 
 ```sh
-uv run wakeword augment
+uv run wakewords augment
 ```
 
 The augment command scans `data/<word>/` for clean files named like `astra-cr1-t100-clean-nonoise-nosnr.wav`, keeps the existing voice code, picks a deterministic stretch from each noise clip, and writes derived files back into the same word directory.
@@ -91,7 +91,7 @@ It reuses the clean source metadata from that word directory's `manifest.jsonl` 
 Build dataset-level train, validation, and test manifests from the per-word manifests:
 
 ```sh
-uv run wakeword manifest --train-ratio 70 --validate-ratio 20 --test-ratio 10
+uv run wakewords manifest --train-ratio 70 --validate-ratio 20 --test-ratio 10
 ```
 
 This command reads `data/<word>/manifest.jsonl`, resolves the local filenames to full paths, performs a deterministic per-label split, and writes:

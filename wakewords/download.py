@@ -43,7 +43,7 @@ def download_datasets(
     outputs: list[Path] = []
 
     if downloads_dir is None:
-        with tempfile.TemporaryDirectory(prefix=".wakeword-download-", dir=Path.cwd()) as tmp_dir:
+        with tempfile.TemporaryDirectory(prefix=".wakewords-download-", dir=Path.cwd()) as tmp_dir:
             outputs.extend(
                 _download_selected(
                     google_speech_commands=google_speech_commands,
@@ -121,7 +121,7 @@ def _common_voice_download_url() -> str:
 
 def _download_file(url: str, output_path: Path, *, description: str) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    request = Request(url, headers={"User-Agent": "wakeword/0.1"})
+    request = Request(url, headers={"User-Agent": "wakewords/0.1"})
     with urlopen(request) as response:
         total = int(response.headers.get("Content-Length") or 0)
         with output_path.open("wb") as output_file:

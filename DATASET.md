@@ -217,7 +217,7 @@ Minimal example:
 You can generate these combined manifests from the per-word manifests with:
 
 ```sh
-uv run wakeword manifest --train-ratio 70 --validate-ratio 20 --test-ratio 10
+uv run wakewords manifest --train-ratio 70 --validate-ratio 20 --test-ratio 10
 ```
 
 The split is deterministic and performed per label, with small rounding adjustments when an exact integer split is not possible.

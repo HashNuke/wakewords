@@ -8,8 +8,8 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from wakeword import cli
-from wakeword.project import GOOGLE_SPEECH_COMMANDS, init_project
+from wakewords import cli
+from wakewords.project import GOOGLE_SPEECH_COMMANDS, init_project
 
 
 class InitProjectTests(unittest.TestCase):
@@ -88,7 +88,7 @@ class InitProjectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             stdout = io.StringIO()
 
-            with mock.patch.object(cli.sys, "argv", ["wakeword", "init", tmp_dir]):
+            with mock.patch.object(cli.sys, "argv", ["wakewords", "init", tmp_dir]):
                 with redirect_stdout(stdout):
                     cli.main()
 

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from wakeword.augment import _collect_noises
+from wakewords.augment import _collect_noises
 
 
 class AugmentTests(unittest.TestCase):
@@ -19,7 +19,7 @@ class AugmentTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with mock.patch("wakeword.augment._media_duration_seconds") as probe:
+            with mock.patch("wakewords.augment._media_duration_seconds") as probe:
                 noises = _collect_noises(noises_dir)
 
             probe.assert_not_called()

@@ -53,7 +53,7 @@ def init_project(project_dir: Path) -> list[Path]:
     data_dir.mkdir(parents=True, exist_ok=True)
     background_audio_dir.mkdir(parents=True, exist_ok=True)
 
-    background_noise_files = resources.files("wakeword.google_scd_background_noise")
+    background_noise_files = resources.files("wakewords.google_scd_background_noise")
     for resource in background_noise_files.iterdir():
         if not resource.is_file() or resource.name == "__init__.py":
             continue
