@@ -55,7 +55,6 @@ class DataTools:
         self,
         provider: str = "cartesia",
         project_dir: str = ".",
-        words_file: str | None = None,
         text: str | None = None,
         output_dir: str = "data",
         voice: str | None = None,
@@ -76,7 +75,7 @@ class DataTools:
 
         project_path = Path(project_dir)
         config_path = project_path / "config.json"
-        prompts = [text] if text else _load_generate_prompts(config_path=config_path, words_file=Path(words_file) if words_file else None)
+        prompts = [text] if text else _load_generate_prompts(config_path=config_path)
         if not prompts:
             raise ValueError("No text to generate. Provide --text or add custom_words to config.json.")
 
@@ -190,10 +189,10 @@ class DataTools:
         run_name: str | None = None,
         model_name: str = DEFAULT_MODEL_NAME,
         base_model_path: str | None = None,
+        from_checkpoint: str | None = None,
         train_manifest: str = "train_manifest.jsonl",
         validation_manifest: str = "validation_manifest.jsonl",
         test_manifest: str = "test_manifest.jsonl",
-        words_file: str | None = None,
         max_epochs: int = 10,
         batch_size: int = 32,
         num_workers: int = 4,
@@ -213,10 +212,10 @@ class DataTools:
             run_name=run_name,
             model_name=model_name,
             base_model_path=Path(base_model_path) if base_model_path else None,
+            from_checkpoint=Path(from_checkpoint) if from_checkpoint else None,
             train_manifest=train_manifest,
             validation_manifest=validation_manifest,
             test_manifest=test_manifest,
-            words_file=Path(words_file) if words_file else None,
             max_epochs=max_epochs,
             batch_size=batch_size,
             num_workers=num_workers,
@@ -231,18 +230,7 @@ class DataTools:
             print(output)
 
 
-def _read_words(path: Path) -> list[str]:
-    return [
-        line.strip()
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip() and not line.strip().startswith("#")
-    ]
-
-
-def _load_generate_prompts(*, config_path: Path, words_file: Path | None) -> list[str]:
-    if words_file is not None:
-        return _read_words(words_file)
-
+def _load_generate_prompts(*, config_path: Path) -> list[str]:
     if not config_path.exists():
         raise FileNotFoundError(f"Project config not found: {config_path}")
     config = json.loads(config_path.read_text(encoding="utf-8"))
@@ -281,7 +269,6 @@ def _package_version() -> str:
 def _normalize_cli_flags() -> None:
     flag_aliases = {
         "--all-voices": "--all_voices",
-        "--words-file": "--words_file",
         "--output-dir": "--output_dir",
         "--data-dir": "--data_dir",
         "--downloads-dir": "--downloads_dir",
@@ -296,6 +283,7 @@ def _normalize_cli_flags() -> None:
         "--model-id": "--model_id",
         "--model-name": "--model_name",
         "--base-model-path": "--base_model_path",
+        "--from-checkpoint": "--from_checkpoint",
         "--sample-rate": "--sample_rate",
         "--project-dir": "--project_dir",
         "--runs-dir": "--runs_dir",
@@ -303,7 +291,6 @@ def _normalize_cli_flags() -> None:
         "--train-manifest": "--train_manifest",
         "--validation-manifest": "--validation_manifest",
         "--test-manifest": "--test_manifest",
-        "--words-file": "--words_file",
         "--max-epochs": "--max_epochs",
         "--batch-size": "--batch_size",
         "--num-workers": "--num_workers",

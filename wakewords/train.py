@@ -40,10 +40,10 @@ def train_model(
     run_name: str | None,
     model_name: str,
     base_model_path: Path | None,
+    from_checkpoint: Path | None,
     train_manifest: str,
     validation_manifest: str,
     test_manifest: str,
-    words_file: Path | None,
     max_epochs: int,
     batch_size: int,
     num_workers: int,
@@ -65,6 +65,10 @@ def train_model(
     runs_dir = _resolve_project_path(project_dir, runs_dir)
     if base_model_path is not None:
         base_model_path = _resolve_project_path(project_dir, base_model_path)
+    if from_checkpoint is not None:
+        from_checkpoint = _resolve_project_path(project_dir, from_checkpoint)
+        if run_name is not None:
+            raise ValueError("run_name cannot be used with from_checkpoint; the run directory is inferred from the checkpoint")
 
     train_manifest_path = _resolve_project_path(project_dir, Path(train_manifest))
     validation_manifest_path = _resolve_project_path(project_dir, Path(validation_manifest))
@@ -76,21 +80,24 @@ def train_model(
 
     labels = _load_labels(
         project_dir=project_dir,
-        words_file=words_file,
         manifest_paths=[train_manifest_path, validation_manifest_path, test_manifest_path],
     )
     if len(labels) < 2:
         raise ValueError("Training requires at least two labels.")
 
-    run = _create_training_run(
-        runs_dir=runs_dir,
-        run_name=run_name,
-        model_name=model_name,
-    )
+    if from_checkpoint is None:
+        run = _create_training_run(
+            runs_dir=runs_dir,
+            run_name=run_name,
+            model_name=model_name,
+        )
+    else:
+        run = _load_training_run_from_checkpoint(from_checkpoint=from_checkpoint, model_name=model_name)
 
     train_config = {
         "model_name": model_name,
         "base_model_path": str(base_model_path) if base_model_path else None,
+        "from_checkpoint": str(from_checkpoint) if from_checkpoint else None,
         "labels": labels,
         "manifests": {
             "train": str(train_manifest_path),
@@ -123,6 +130,7 @@ def train_model(
         run=run,
         model_name=model_name,
         base_model_path=base_model_path,
+        from_checkpoint=from_checkpoint,
         labels=labels,
         train_manifest_path=train_manifest_path,
         validation_manifest_path=validation_manifest_path,
@@ -142,6 +150,7 @@ def _run_nemo_training(
     run: TrainingRun,
     model_name: str,
     base_model_path: Path | None,
+    from_checkpoint: Path | None,
     labels: list[str],
     train_manifest_path: Path,
     validation_manifest_path: Path,
@@ -164,6 +173,8 @@ def _run_nemo_training(
         raise RuntimeError("TensorBoard is not installed. Install package dependencies with: uv sync")
     if base_model_path is not None and not base_model_path.is_file():
         raise FileNotFoundError(f"Missing base model: {base_model_path}")
+    if from_checkpoint is not None and not from_checkpoint.is_file():
+        raise FileNotFoundError(f"Missing checkpoint: {from_checkpoint}")
 
     from lightning.pytorch import Trainer
     from lightning.pytorch.callbacks import ModelCheckpoint
@@ -217,7 +228,7 @@ def _run_nemo_training(
         callbacks=callbacks,
         logger=logger,
     )
-    trainer.fit(model)
+    trainer.fit(model, ckpt_path=str(from_checkpoint) if from_checkpoint else None)
     model.save_to(str(run.final_model_path))
 
 
@@ -261,8 +272,34 @@ def _create_training_run(*, runs_dir: Path, run_name: str | None, model_name: st
     )
 
 
-def _load_labels(*, project_dir: Path, words_file: Path | None, manifest_paths: list[Path]) -> list[str]:
-    configured_labels = _load_configured_labels(project_dir=project_dir, words_file=words_file)
+def _load_training_run_from_checkpoint(*, from_checkpoint: Path, model_name: str) -> TrainingRun:
+    if from_checkpoint.parent.name != "checkpoints":
+        raise ValueError("from_checkpoint must point to a .ckpt file inside a checkpoints directory")
+    if from_checkpoint.suffix != ".ckpt":
+        raise ValueError("from_checkpoint must point to a .ckpt file")
+    if not from_checkpoint.is_file():
+        raise FileNotFoundError(f"Missing checkpoint: {from_checkpoint}")
+    run_dir = from_checkpoint.parent.parent
+    if not run_dir.is_dir():
+        raise FileNotFoundError(f"Missing run directory: {run_dir}")
+    checkpoints_dir = run_dir / "checkpoints"
+    logs_dir = run_dir / "logs"
+    models_dir = run_dir / "models"
+    for path in (checkpoints_dir, logs_dir, models_dir):
+        path.mkdir(parents=True, exist_ok=True)
+    safe_model_name = _safe_path_name(model_name)
+    return TrainingRun(
+        run_dir=run_dir,
+        config_path=run_dir / "train_config.json",
+        checkpoints_dir=checkpoints_dir,
+        logs_dir=logs_dir,
+        models_dir=models_dir,
+        final_model_path=models_dir / f"{safe_model_name}.nemo",
+    )
+
+
+def _load_labels(*, project_dir: Path, manifest_paths: list[Path]) -> list[str]:
+    configured_labels = _load_configured_labels(project_dir=project_dir)
     manifest_labels = _load_manifest_labels(manifest_paths)
     labels = list(configured_labels)
     for label in manifest_labels:
@@ -271,8 +308,8 @@ def _load_labels(*, project_dir: Path, words_file: Path | None, manifest_paths: 
     return labels
 
 
-def _load_configured_labels(*, project_dir: Path, words_file: Path | None) -> list[str]:
-    candidate_words_file = _resolve_project_path(project_dir, words_file or Path("words.json"))
+def _load_configured_labels(*, project_dir: Path) -> list[str]:
+    candidate_words_file = project_dir / "words.json"
     if candidate_words_file.exists():
         words = json.loads(candidate_words_file.read_text(encoding="utf-8"))
         return _dedupe(word["word"] for word in words if isinstance(word, dict) and isinstance(word.get("word"), str))

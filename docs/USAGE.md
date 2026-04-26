@@ -69,12 +69,6 @@ Generate one explicit text prompt instead of `custom_words`:
 uv run wakewords generate --text dexa
 ```
 
-Generate from a legacy words file instead of `custom_words`:
-
-```sh
-uv run wakewords generate --words-file words.txt
-```
-
 Generate with a specific voice:
 
 ```sh
@@ -225,6 +219,16 @@ uv run wakewords train
 
 Training uses NeMo's `from_pretrained()` by default. To train from a local `.nemo`
 file instead, pass `--base-model-path`.
+
+Resume an interrupted or earlier training run from its last checkpoint:
+
+```sh
+uv run wakewords train --from-checkpoint runs/<run-name>/checkpoints/last.ckpt --max-epochs 20
+```
+
+When resuming, the run directory is inferred from the checkpoint path and training
+continues writing checkpoints, logs, and the final model under that same run.
+`--max-epochs` is the total epoch target, not the number of additional epochs.
 
 By default, a training run writes only inside the current project directory:
 
