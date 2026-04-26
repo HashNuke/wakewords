@@ -180,7 +180,7 @@ in documentation.
 
 Reference:
 
-- <https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo/models/commandrecognition_en_matchboxnet3x1x64_v1?version=1.0.0rc1>
+- <https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo/models/commandrecognition_en_matchboxnet3x2x64_v2?version=1.0.0rc1>
 - <https://docs.nvidia.com/nemo-framework/user-guide/24.09/nemotoolkit/asr/speech_classification/datasets.html>
 - <https://github.com/NVIDIA-NeMo/NeMo/blob/main/examples/asr/speech_classification/speech_to_label.py>
 - <https://raw.githubusercontent.com/NVIDIA/NeMo/main/examples/asr/conf/matchboxnet/matchboxnet_3x1x64_v1.yaml>
