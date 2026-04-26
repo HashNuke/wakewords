@@ -6,6 +6,7 @@ from pathlib import Path
 
 import fire
 
+from datatools.augment import augment_dataset
 from datatools.providers import get_provider
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,7 @@ class DataTools:
         provider: str = "cartesia",
         words_file: str = "extended-words.txt",
         text: str | None = None,
-        output_dir: str = "data/generated",
+        output_dir: str = "data",
         voice: str | None = None,
         all_voices: bool = False,
         lang: str | None = None,
@@ -76,6 +77,26 @@ class DataTools:
         for output in outputs:
             print(output)
 
+    def augment(
+        self,
+        data_dir: str = "data",
+        noises_dir: str = "data/_noises_",
+        concurrency: int = 1,
+        overwrite: bool = False,
+        verbose: bool = False,
+    ) -> None:
+        """Augment clean generated wav files with tempo and background-noise variants."""
+        _configure_logging(verbose=verbose)
+        outputs = augment_dataset(
+            data_dir=Path(data_dir),
+            noises_dir=Path(noises_dir),
+            concurrency=concurrency,
+            overwrite=overwrite,
+        )
+
+        for output in outputs:
+            print(output)
+
 
 def _read_words(path: Path) -> list[str]:
     return [
@@ -95,6 +116,8 @@ def _normalize_cli_flags() -> None:
         "--all-voices": "--all_voices",
         "--words-file": "--words_file",
         "--output-dir": "--output_dir",
+        "--data-dir": "--data_dir",
+        "--noises-dir": "--noises_dir",
         "--model-id": "--model_id",
         "--sample-rate": "--sample_rate",
     }

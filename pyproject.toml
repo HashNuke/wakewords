@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "cartesia>=3.0.2",
     "fire>=0.7.1",
+    "tqdm>=4.67.3",
 ]
 
 [project.scripts]
@@ -18,3 +19,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["datatools"]
+
+[dependency-groups]
+dev = [
+    "types-tqdm>=4.67.3.20260408",
+]

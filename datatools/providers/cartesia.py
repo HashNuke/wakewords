@@ -2,19 +2,22 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from tqdm import tqdm
 from pathlib import Path
 
 from cartesia import Cartesia
 
 from datatools.providers.base import Voice
+from datatools.registry import VoiceRegistry
 
 logger = logging.getLogger(__name__)
 
 
 class CartesiaProvider:
     name = "cartesia"
+    short_code = "cr"
 
     def list_voices(
         self,
@@ -66,6 +69,9 @@ class CartesiaProvider:
         overwrite: bool,
     ) -> list[Path]:
         voices = self._select_voices(voice=voice, all_voices=all_voices, lang=lang)
+        registry = VoiceRegistry(output_dir / f"voices.{self.name}.txt")
+        for v in voices:
+            registry.short_code(self.short_code, v.id)
         tasks = [
             _GenerationTask(prompt=prompt, voice=selected_voice)
             for selected_voice in voices
@@ -81,6 +87,7 @@ class CartesiaProvider:
                     self._generate_one,
                     task=task,
                     output_dir=output_dir,
+                    registry=registry,
                     lang=lang,
                     model_id=model_id,
                     sample_rate=sample_rate,
@@ -90,8 +97,10 @@ class CartesiaProvider:
                 for task in tasks
             ]
 
-            for future in as_completed(futures):
-                outputs.append(future.result())
+            with tqdm(total=len(futures), unit="file") as bar:
+                for future in as_completed(futures):
+                    outputs.append(future.result())
+                    bar.update(1)
 
         return sorted(outputs)
 
@@ -124,16 +133,20 @@ class CartesiaProvider:
         *,
         task: "_GenerationTask",
         output_dir: Path,
+        registry: VoiceRegistry,
         lang: str | None,
         model_id: str,
         sample_rate: int,
         encoding: str,
         overwrite: bool,
     ) -> Path:
-        voice_dir = output_dir / self.name / _slug(task.voice.name or task.voice.id)
-        voice_dir.mkdir(parents=True, exist_ok=True)
+        voice_code = registry.short_code(self.short_code, task.voice.id)
+        word_slug = _slug(task.prompt)
+        word_dir = output_dir / word_slug
+        word_dir.mkdir(parents=True, exist_ok=True)
 
-        output_path = voice_dir / f"{_slug(task.prompt)}.wav"
+        filename = f"{word_slug}-{voice_code}-t100-clean-nonoise-nosnr.wav"
+        output_path = word_dir / filename
         if output_path.exists() and not overwrite:
             return output_path
 
@@ -186,5 +199,6 @@ def _optional_str(value: object) -> str | None:
 
 
 def _slug(value: str) -> str:
+    import re
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
     return slug or "untitled"

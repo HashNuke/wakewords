@@ -61,4 +61,14 @@ Increase request concurrency:
 uv run datatools generate --concurrency 4
 ```
 
-By default, generated files are written under `data/generated/cartesia/<voice>/`.
+By default, generated files are written under `data/<word>/`.
+
+Place background-noise clips under `data/_noises_/` as `.wav` files such as `cafe.wav`, `car.wav`, or `office.wav`. The basename is used in augmented filenames.
+
+Generate tempo-only and tempo+noise variants in place:
+
+```sh
+uv run datatools augment
+```
+
+The augment command scans `data/<word>/` for clean files named like `astra-cr1-t100-clean-nonoise-nosnr.wav`, keeps the existing voice code, picks a deterministic stretch from each noise clip, and writes derived files back into the same word directory.

@@ -27,31 +27,31 @@ augmentations should live under `data/` and should not be committed.
 Use this filename schema for generated and augmented WAV files:
 
 ```text
-<word>-<provider>-<voice>-t<tempo>-<env>-<noiseid>-<snr>.wav
+<word>-<provider>-<voice>-t<tempo>-<noise>-<noiseid>-<snr>.wav
 ```
 
 Fields:
 
 - `word`: normalized label from `words.json`, such as `astra`
 - `provider`: short provider key, such as `cr` for Cartesia or `gk` for Grok
-- `voice`: stable provider voice id slug
+- `voice`: stable short voice code from `data/voices.<provider>.txt`, such as `cr1` or `gk12`
 - `tempo`: tempo multiplier without the decimal point, such as `t100` or `t085`
-- `env`: environment label, such as `clean`, `cafe`, `car`, `office`, or `street`
-- `noiseid`: background-noise clip id, or `nonoise` for clean samples
+- `noise`: noise label, such as `clean`, `cafe`, `car`, `office`, or `street`
+- `noiseid`: background-noise clip id, or `nonoise` for clean samples. If you use one file per noise source such as `data/_noises_/cafe.wav`, the current tools use the basename for both `noise` and `noiseid`.
 - `snr`: signal-to-noise ratio label, or `nosnr` for clean samples
 
 Clean examples:
 
 ```text
-astra-cr-voice123-t100-clean-nonoise-nosnr.wav
-astra-cr-voice123-t085-clean-nonoise-nosnr.wav
+astra-cr1-t100-clean-nonoise-nosnr.wav
+astra-cr1-t085-clean-nonoise-nosnr.wav
 ```
 
 Noisy examples:
 
 ```text
-astra-cr-voice123-t100-cafe-n003-snr20.wav
-astra-cr-voice123-t110-car-n007-snr10.wav
+astra-cr1-t100-cafe-cafe-snr20.wav
+astra-cr1-t110-car-car-snr10.wav
 ```
 
 ### Speed augmentation with ffmpeg
