@@ -29,6 +29,7 @@ class TTSProvider(Protocol):
         prompts: list[str],
         output_dir: Path,
         voice: str | None,
+        voices: int | None,
         all_voices: bool,
         lang: str | None,
         concurrency: int,

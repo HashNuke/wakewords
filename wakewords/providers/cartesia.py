@@ -61,6 +61,7 @@ class CartesiaProvider:
         prompts: list[str],
         output_dir: Path,
         voice: str | None,
+        voices: int | None,
         all_voices: bool,
         lang: str | None,
         concurrency: int,
@@ -69,7 +70,7 @@ class CartesiaProvider:
         encoding: str,
         overwrite: bool,
     ) -> list[Path]:
-        voices = self._select_voices(voice=voice, all_voices=all_voices, lang=lang)
+        voices = self._select_voices(voice=voice, voices=voices, all_voices=all_voices, lang=lang)
         registry = VoiceRegistry(output_dir / f"voices.{self.name}.txt")
         manifests = ManifestStore()
         for v in voices:
@@ -107,29 +108,41 @@ class CartesiaProvider:
 
         return sorted(outputs)
 
-    def _select_voices(self, *, voice: str | None, all_voices: bool, lang: str | None) -> list[Voice]:
+    def _select_voices(
+        self,
+        *,
+        voice: str | None,
+        voices: int | None,
+        all_voices: bool,
+        lang: str | None,
+    ) -> list[Voice]:
+        if voices is not None and voices < 1:
+            raise ValueError("voices must be >= 1")
+        if voice and voices is not None:
+            raise ValueError("Use --voice for one specific voice or --voices to limit selected voices, not both.")
+
         if all_voices:
-            voices = self.list_voices(all=True, lang=lang)
-            if not voices:
+            selected_voices = self.list_voices(all=True, lang=lang)
+            if not selected_voices:
                 raise RuntimeError("Cartesia returned no voices.")
-            return voices
+            return selected_voices[:voices]
 
         if voice:
-            voices = self.list_voices(all=True, lang=lang)
-            if not voices:
+            selected_voices = self.list_voices(all=True, lang=lang)
+            if not selected_voices:
                 raise RuntimeError("Cartesia returned no voices.")
             normalized = voice.strip().lower()
-            for candidate in voices:
+            for candidate in selected_voices:
                 if candidate.id.lower() == normalized:
                     return [candidate]
                 if candidate.name and candidate.name.lower() == normalized:
                     return [candidate]
             raise ValueError(f"Could not find Cartesia voice by id or name: {voice}")
 
-        voices = self.list_voices(pages=1, all=False, lang=lang)
-        if not voices:
+        selected_voices = self.list_voices(pages=1, all=False, lang=lang)
+        if not selected_voices:
             raise RuntimeError("Cartesia returned no voices.")
-        return [voices[0]]
+        return selected_voices[: voices or 1]
 
     def _generate_one(
         self,
