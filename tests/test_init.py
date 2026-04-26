@@ -109,6 +109,18 @@ class InitProjectTests(unittest.TestCase):
                 ],
             )
 
+    def test_cli_version_prints_project_version(self) -> None:
+        for version_flag in ("--version", "—version"):
+            with self.subTest(version_flag=version_flag):
+                stdout = io.StringIO()
+
+                with mock.patch.object(cli.sys, "argv", ["wakewords", version_flag]):
+                    with mock.patch.object(cli, "_package_version", return_value="0.2.1"):
+                        with redirect_stdout(stdout):
+                            cli.main()
+
+                self.assertEqual(stdout.getvalue(), "0.2.1\n")
+
 
 if __name__ == "__main__":
     unittest.main()

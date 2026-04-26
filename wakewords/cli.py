@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import tomllib
+from importlib import metadata
 from pathlib import Path
 
 import fire
@@ -16,6 +18,8 @@ from wakewords.providers import get_provider
 from wakewords.train import DEFAULT_MODEL_NAME, train_model
 
 logger = logging.getLogger(__name__)
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 class DataTools:
@@ -256,7 +260,22 @@ def _resolve_project_path(project_dir: Path, path: Path) -> Path:
 
 def main() -> None:
     _normalize_cli_flags()
+    if _is_version_request():
+        print(_package_version())
+        return
     fire.Fire(DataTools())
+
+
+def _is_version_request() -> bool:
+    return sys.argv[1:] == ["--version"]
+
+
+def _package_version() -> str:
+    try:
+        return metadata.version("wakewords")
+    except metadata.PackageNotFoundError:
+        pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        return str(pyproject["project"]["version"])
 
 
 def _normalize_cli_flags() -> None:
