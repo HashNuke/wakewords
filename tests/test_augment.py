@@ -6,7 +6,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from wakewords.augment import NoiseSample, SourceSample, _build_tasks, _collect_noises, _combo_shape, _select_subset
+from wakewords.augment import AugmentTask, NoiseSample, SourceSample, _build_tasks, _collect_noises, _collect_sources, _combo_shape, _select_subset
+from wakewords.manifest import ManifestStore
 
 
 class AugmentTests(unittest.TestCase):
@@ -54,6 +55,37 @@ class AugmentTests(unittest.TestCase):
         self.assertEqual(len({task.tempo for task in tasks}), 5)
         self.assertEqual(len({task.noise for task in tasks}), 2)
         self.assertEqual(len({task.snr for task in tasks}), 1)
+
+    def test_noisy_output_path_uses_single_environment_name_without_separators(self) -> None:
+        task = AugmentTask(
+            source=SourceSample(
+                path=Path("data/astra/astra-cr107-t100-clean-nonoise-nosnr.wav"),
+                word="hey-astra now",
+                voice_code="cr107",
+                duration=1.0,
+                duration_ms=1000,
+            ),
+            tempo=0.95,
+            noise=NoiseSample(path=Path("background_audio/doing-the_dishes.wav"), duration=60.0, duration_ms=60000),
+            snr=10,
+        )
+
+        self.assertEqual(task.output_path.name, "heyastranow-cr107-t095-doingthedishes-snr10.wav")
+
+    def test_collect_sources_keeps_directory_label_with_hyphens(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            word_dir = Path(tmp_dir) / "hey-astra-now"
+            word_dir.mkdir()
+            wav_path = word_dir / "heyastranow-cr107-t100-clean-nonoise-nosnr.wav"
+            wav_path.write_bytes(b"not probed because manifest exists")
+            (word_dir / "manifest.jsonl").write_text(
+                json.dumps({"audio_filepath": wav_path.name, "duration": 1.0, "duration_ms": 1000, "label": "hey-astra-now"}) + "\n",
+                encoding="utf-8",
+            )
+
+            sources = _collect_sources(Path(tmp_dir), ManifestStore())
+
+        self.assertEqual([source.word for source in sources], ["hey-astra-now"])
 
     def test_combo_shape_tracks_target_as_voice_count_changes(self) -> None:
         self.assertEqual(

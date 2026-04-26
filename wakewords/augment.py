@@ -47,12 +47,13 @@ class AugmentTask:
 
     @property
     def output_path(self) -> Path:
+        word_name = _filename_token(self.source.word)
         tempo_label = _tempo_label(self.tempo)
         if self.noise is None:
-            filename = f"{self.source.word}-{self.source.voice_code}-{tempo_label}-clean-nonoise-nosnr.wav"
+            filename = f"{word_name}-{self.source.voice_code}-{tempo_label}-clean-nonoise-nosnr.wav"
         else:
-            noise_name = _slug(self.noise.path.stem)
-            filename = f"{self.source.word}-{self.source.voice_code}-{tempo_label}-{noise_name}-{noise_name}-snr{self.snr:02d}.wav"
+            noise_name = _filename_token(self.noise.path.stem)
+            filename = f"{word_name}-{self.source.voice_code}-{tempo_label}-{noise_name}-snr{self.snr:02d}.wav"
         return self.source.path.parent / filename
 
 
@@ -108,15 +109,16 @@ def _collect_sources(data_dir: Path, manifests: ManifestStore) -> list[SourceSam
         parsed = _parse_source_filename(wav_path.name)
         if parsed is None:
             continue
-        word, voice_code = parsed
+        _, voice_code = parsed
+        label = wav_path.parent.name
         manifest = manifests.for_word_dir(wav_path.parent)
         entry = manifest.get(wav_path)
         if entry is None:
-            entry = manifest.record(audio_path=wav_path, label=word)
+            entry = manifest.record(audio_path=wav_path, label=label)
         sources.append(
             SourceSample(
                 path=wav_path,
-                word=word,
+                word=label,
                 voice_code=voice_code,
                 duration=float(entry["duration"]),
                 duration_ms=int(entry["duration_ms"]),
@@ -421,11 +423,8 @@ def _tempo_label(tempo: float) -> str:
     return f"t{int(round(tempo * 100)):03d}"
 
 
-def _slug(value: str) -> str:
-    chars = [ch.lower() if ch.isalnum() else "-" for ch in value]
-    slug = "".join(chars).strip("-")
-    while "--" in slug:
-        slug = slug.replace("--", "-")
+def _filename_token(value: str) -> str:
+    slug = "".join(ch.lower() for ch in value if ch.isalnum())
     return slug or "untitled"
 
 

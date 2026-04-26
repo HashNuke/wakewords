@@ -15,7 +15,7 @@ class CleanTests(unittest.TestCase):
             word_dir = project_dir / "data" / "yes"
             word_dir.mkdir(parents=True)
             clean_path = word_dir / "yes-cr1-t100-clean-nonoise-nosnr.wav"
-            augmented_path = word_dir / "yes-cr1-t095-rain-rain-snr10.wav"
+            augmented_path = word_dir / "yes-cr1-t095-rain-snr10.wav"
             clean_path.write_bytes(b"clean")
             augmented_path.write_bytes(b"augmented")
             _write_word_manifest(word_dir, [clean_path.name, augmented_path.name])
@@ -37,7 +37,7 @@ class CleanTests(unittest.TestCase):
             word_dir = project_dir / "data" / "yes"
             word_dir.mkdir(parents=True)
             clean_path = word_dir / "yes-cr1-t100-clean-nonoise-nosnr.wav"
-            augmented_path = word_dir / "yes-cr1-t095-rain-rain-snr10.wav"
+            augmented_path = word_dir / "yes-cr1-t095-rain-snr10.wav"
             clean_path.write_bytes(b"clean")
             augmented_path.write_bytes(b"augmented")
             _write_word_manifest(word_dir, [clean_path.name, augmented_path.name])
@@ -56,7 +56,7 @@ class CleanTests(unittest.TestCase):
             word_dir = project_dir / "data" / "yes"
             word_dir.mkdir(parents=True)
             clean_path = word_dir / "yes-cr1-t100-clean-nonoise-nosnr.wav"
-            augmented_path = word_dir / "yes-cr1-t095-rain-rain-snr10.wav"
+            augmented_path = word_dir / "yes-cr1-t095-rain-snr10.wav"
             clean_path.write_bytes(b"clean")
             augmented_path.write_bytes(b"augmented")
             _write_word_manifest(word_dir, [clean_path.name, augmented_path.name])

@@ -159,10 +159,11 @@ class CartesiaProvider:
     ) -> Path:
         voice_code = registry.short_code(self.short_code, task.voice.id)
         word_slug = _slug(task.prompt)
+        filename_word = _filename_token(task.prompt)
         word_dir = output_dir / word_slug
         word_dir.mkdir(parents=True, exist_ok=True)
 
-        filename = f"{word_slug}-{voice_code}-t100-clean-nonoise-nosnr.wav"
+        filename = f"{filename_word}-{voice_code}-t100-clean-nonoise-nosnr.wav"
         output_path = word_dir / filename
         if output_path.exists() and not overwrite:
             manifests.for_word_dir(word_dir).record(audio_path=output_path, label=word_slug)
@@ -220,5 +221,11 @@ def _optional_str(value: object) -> str | None:
 
 def _slug(value: str) -> str:
     import re
+
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug or "untitled"
+
+
+def _filename_token(value: str) -> str:
+    slug = "".join(ch.lower() for ch in value if ch.isalnum())
     return slug or "untitled"
