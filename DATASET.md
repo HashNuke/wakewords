@@ -110,6 +110,29 @@ Higher SNR means cleaner speech. Start with these noisy variants:
 
 Clean samples should use `clean-nonoise-nosnr`.
 
+## Common Voice 7.0 - Single Word Target Segment
+
+```
+Dataset ID: cmkzhp64p00wlno07elrmt20y
+Dataset Slug: common-voice-7-0-single-word-target-segm-2ba5e0aa
+```
+
+Script download dataset is below.
+
+```shell
+# Script requirements
+# Export `COMMONVOICE_API_KEY`
+
+# Get download URL
+RESPONSE=$(curl -s -X POST "https://mozilladatacollective.com/api/datasets/cmkzhp64p00wlno07elrmt20y/download" \
+  -H "Authorization: Bearer $COMMONVOICE_API_KEY" \
+  -H "Content-Type: application/json")
+
+# Extract download URL and download file
+DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.downloadUrl')
+curl -L -o "Common Voice 7.0 - Single Word Target Segment.tar.gz" "$DOWNLOAD_URL"
+```
+
 ## `google/speech_commands` on Hugging Face
 
 Reference:
