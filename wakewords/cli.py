@@ -11,7 +11,7 @@ from wakewords.dataset_manifest import build_split_manifests
 from wakewords.download import download_datasets
 from wakewords.project import init_project
 from wakewords.providers import get_provider
-from wakewords.train import DEFAULT_MODEL_NAME, train_model
+from wakewords.train import DEFAULT_BASE_MODEL_PATH, DEFAULT_MODEL_NAME, train_model
 
 logger = logging.getLogger(__name__)
 
@@ -137,19 +137,17 @@ class DataTools:
 
     def download(
         self,
-        google_speech_commands: bool = False,
-        all: bool = False,
         downloads_dir: str | None = None,
         data_dir: str = "data",
+        models_dir: str = "models/base",
         verbose: bool = False,
     ) -> None:
-        """Download and extract external speech datasets."""
+        """Download the base model and external speech dataset."""
         _configure_logging(verbose=verbose)
         outputs = download_datasets(
-            google_speech_commands=google_speech_commands,
-            all=all,
             downloads_dir=Path(downloads_dir) if downloads_dir else None,
             data_dir=Path(data_dir),
+            models_dir=Path(models_dir),
         )
 
         for output in outputs:
@@ -162,6 +160,7 @@ class DataTools:
         runs_dir: str = "runs",
         run_name: str | None = None,
         model_name: str = DEFAULT_MODEL_NAME,
+        base_model_path: str = str(DEFAULT_BASE_MODEL_PATH),
         train_manifest: str = "train_manifest.jsonl",
         validation_manifest: str = "validation_manifest.jsonl",
         test_manifest: str = "test_manifest.jsonl",
@@ -184,6 +183,7 @@ class DataTools:
             runs_dir=Path(runs_dir),
             run_name=run_name,
             model_name=model_name,
+            base_model_path=Path(base_model_path),
             train_manifest=train_manifest,
             validation_manifest=validation_manifest,
             test_manifest=test_manifest,
@@ -222,7 +222,7 @@ def _normalize_cli_flags() -> None:
         "--output-dir": "--output_dir",
         "--data-dir": "--data_dir",
         "--downloads-dir": "--downloads_dir",
-        "--google-speech-commands": "--google_speech_commands",
+        "--models-dir": "--models_dir",
         "--noises-dir": "--noises_dir",
         "--train-ratio": "--train_ratio",
         "--validate-ratio": "--validate_ratio",
@@ -232,6 +232,7 @@ def _normalize_cli_flags() -> None:
         "--test-filename": "--test_filename",
         "--model-id": "--model_id",
         "--model-name": "--model_name",
+        "--base-model-path": "--base_model_path",
         "--sample-rate": "--sample_rate",
         "--project-dir": "--project_dir",
         "--runs-dir": "--runs_dir",

@@ -110,7 +110,17 @@ This command reads `data/<word>/manifest.jsonl`, resolves the local filenames to
 - `data/validation_manifest.jsonl`
 - `data/test_manifest.jsonl`
 
-Finetune the default NeMo command-recognition model from those manifests:
+Download the external training assets:
+
+```sh
+uv run wakewords download
+```
+
+This writes Google Speech Commands under `data/google-speech-commands` and the
+base MatchboxNet model to
+`models/base/commandrecognition_en_matchboxnet3x2x64_v2.nemo`.
+
+Finetune the downloaded NeMo command-recognition model from those manifests:
 
 ```sh
 uv run wakewords train

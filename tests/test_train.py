@@ -31,6 +31,7 @@ class TrainTests(unittest.TestCase):
                 runs_dir=Path("runs"),
                 run_name="smoke run",
                 model_name=DEFAULT_MODEL_NAME,
+                base_model_path=Path("models/base") / f"{DEFAULT_MODEL_NAME}.nemo",
                 train_manifest="train_manifest.jsonl",
                 validation_manifest="validation_manifest.jsonl",
                 test_manifest="test_manifest.jsonl",
@@ -53,6 +54,10 @@ class TrainTests(unittest.TestCase):
 
             train_config = json.loads(run.config_path.read_text(encoding="utf-8"))
             self.assertEqual(train_config["labels"], ["dexa", "yes", "unknown"])
+            self.assertEqual(
+                train_config["base_model_path"],
+                str(project_dir / "models" / "base" / f"{DEFAULT_MODEL_NAME}.nemo"),
+            )
             self.assertEqual(train_config["training"]["tensorboard"], True)
             self.assertEqual(train_config["outputs"]["checkpoints_dir"], str(run.checkpoints_dir))
 

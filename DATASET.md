@@ -226,6 +226,7 @@ The default training command finetunes the NeMo model named above:
 
 ```sh
 uv sync
+uv run wakewords download
 uv run wakewords train
 ```
 
@@ -240,6 +241,12 @@ runs/
     logs/
     models/
       commandrecognition_en_matchboxnet3x2x64_v2.nemo
+```
+
+The base model used for finetuning is downloaded by `wakewords download` to:
+
+```text
+models/base/commandrecognition_en_matchboxnet3x2x64_v2.nemo
 ```
 
 TensorBoard ships as a package dependency and is enabled by default for real

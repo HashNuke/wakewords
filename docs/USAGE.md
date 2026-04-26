@@ -44,22 +44,18 @@ uv run wakewords generate --lang en --all-voices
 
 ## Dataset Downloads
 
-Download and extract Google Speech Commands:
+Download the external training assets:
 
 ```sh
-uv run wakewords download --google-speech-commands
+uv run wakewords download
 ```
 
-This writes the extracted dataset to:
+This writes the extracted Google Speech Commands dataset and base MatchboxNet
+model to:
 
 ```text
 data/google-speech-commands
-```
-
-Download and extract all supported external datasets:
-
-```sh
-uv run wakewords download --all
+models/base/commandrecognition_en_matchboxnet3x2x64_v2.nemo
 ```
 
 By default, archives are downloaded into a temporary directory in the current
@@ -67,11 +63,11 @@ directory, extracted, and then deleted. To keep the downloaded archives, pass
 `--downloads-dir`:
 
 ```sh
-uv run wakewords download --all --downloads-dir data/downloads
+uv run wakewords download --downloads-dir data/downloads
 ```
 
-`--downloads-dir` only controls where archives are retained. Extracted datasets
-still use the fixed paths under `data/` shown above.
+`--downloads-dir` only controls where downloaded archives are retained. Extracted
+datasets and models still use the fixed paths shown above.
 
 The download command shows separate progress bars for archive download and
 archive extraction.
@@ -92,7 +88,7 @@ uv sync
 
 TensorBoard installs on every platform. NeMo installs automatically on non-macOS platforms; training is not supported on macOS because NeMo's ASR dependency chain does not publish macOS wheels. Use macOS for dataset preparation and a Linux machine for training.
 
-Finetune the default model from `DATASET.md`:
+Finetune the downloaded base model from `DATASET.md`:
 
 ```sh
 uv run wakewords train

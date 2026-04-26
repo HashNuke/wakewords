@@ -12,5 +12,4 @@ that should only download supported datasets.
 ## Solution
 
 Removed Common Voice from the download implementation, CLI flags, and user-facing
-usage docs. `wakewords download --all` now maps to the supported Google Speech
-Commands download. Common Voice research notes remain in `DATASET.md`.
+usage docs. Common Voice research notes remain in `DATASET.md`.
