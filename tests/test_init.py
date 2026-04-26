@@ -23,11 +23,41 @@ class InitProjectTests(unittest.TestCase):
                 outputs,
                 [
                     project_dir / "data",
+                    project_dir / "background_audio",
                     project_dir / "config.json",
                 ],
             )
             self.assertTrue((project_dir / "data").is_dir())
-            self.assertFalse((project_dir / "background_audio").exists())
+            self.assertEqual(
+                sorted(path.name for path in (project_dir / "background_audio").iterdir()),
+                [
+                    "README.md",
+                    "doing_the_dishes.wav",
+                    "dude_miaowing.wav",
+                    "exercise_bike.wav",
+                    "manifest.jsonl",
+                    "pink_noise.wav",
+                    "running_tap.wav",
+                    "white_noise.wav",
+                ],
+            )
+            manifest_entries = [
+                json.loads(line)
+                for line in (project_dir / "background_audio" / "manifest.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            self.assertEqual(
+                manifest_entries,
+                [
+                    {"audio": "doing_the_dishes.wav", "duration_ms": 95183},
+                    {"audio": "dude_miaowing.wav", "duration_ms": 61806},
+                    {"audio": "exercise_bike.wav", "duration_ms": 61254},
+                    {"audio": "pink_noise.wav", "duration_ms": 60000},
+                    {"audio": "running_tap.wav", "duration_ms": 61156},
+                    {"audio": "white_noise.wav", "duration_ms": 60000},
+                ],
+            )
 
             config_text = (project_dir / "config.json").read_text(encoding="utf-8")
             config = json.loads(config_text)
@@ -68,6 +98,7 @@ class InitProjectTests(unittest.TestCase):
                 output_lines,
                 [
                     str(project_dir / "data"),
+                    str(project_dir / "background_audio"),
                     str(project_dir / "config.json"),
                 ],
             )

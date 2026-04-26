@@ -89,7 +89,7 @@ class DataTools:
     def augment(
         self,
         data_dir: str = "data",
-        noises_dir: str = "data/_noises_",
+        noises_dir: str = "background_audio",
         concurrency: int = 1,
         overwrite: bool = False,
         verbose: bool = False,

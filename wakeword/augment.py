@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import struct
 import subprocess
@@ -29,10 +30,17 @@ class SourceSample:
 
 
 @dataclass(frozen=True)
+class NoiseSample:
+    path: Path
+    duration: float
+    duration_ms: int
+
+
+@dataclass(frozen=True)
 class AugmentTask:
     source: SourceSample
     tempo: float
-    noise: Path | None
+    noise: NoiseSample | None
     snr: int | None
 
     @property
@@ -41,7 +49,7 @@ class AugmentTask:
         if self.noise is None:
             filename = f"{self.source.word}-{self.source.voice_code}-{tempo_label}-clean-nonoise-nosnr.wav"
         else:
-            noise_name = _slug(self.noise.stem)
+            noise_name = _slug(self.noise.path.stem)
             filename = f"{self.source.word}-{self.source.voice_code}-{tempo_label}-{noise_name}-{noise_name}-snr{self.snr:02d}.wav"
         return self.source.path.parent / filename
 
@@ -63,7 +71,7 @@ def augment_dataset(
     if not sources:
         raise ValueError(f"No clean generated files found under {data_dir}.")
 
-    noises = sorted(noises_dir.glob("*.wav"))
+    noises = _collect_noises(noises_dir)
     if not noises:
         raise ValueError(f"No noise wav files found under {noises_dir}.")
 
@@ -108,10 +116,41 @@ def _collect_sources(data_dir: Path, manifests: ManifestStore) -> list[SourceSam
     return sources
 
 
+def _collect_noises(noises_dir: Path) -> list[NoiseSample]:
+    manifest_durations = _load_noise_manifest(noises_dir / "manifest.jsonl")
+    noises: list[NoiseSample] = []
+    for wav_path in sorted(noises_dir.glob("*.wav")):
+        duration_ms = manifest_durations.get(wav_path.name)
+        if duration_ms is None:
+            duration = _media_duration_seconds(wav_path)
+            duration_ms = round(duration * 1000)
+        else:
+            duration = duration_ms / 1000
+        noises.append(NoiseSample(path=wav_path, duration=duration, duration_ms=duration_ms))
+    return noises
+
+
+def _load_noise_manifest(manifest_path: Path) -> dict[str, int]:
+    if not manifest_path.exists():
+        return {}
+    durations: dict[str, int] = {}
+    for line in manifest_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        entry = json.loads(line)
+        audio = entry.get("audio")
+        duration_ms = entry.get("duration_ms")
+        if not isinstance(audio, str) or not isinstance(duration_ms, int):
+            raise ValueError(f"Invalid noise manifest entry in {manifest_path}: {line}")
+        durations[audio] = duration_ms
+    return durations
+
+
 def _build_tasks(
     *,
     sources: list[SourceSample],
-    noises: list[Path],
+    noises: list[NoiseSample],
     tempos: tuple[float, ...],
     snrs: tuple[int, ...],
 ) -> list[AugmentTask]:
@@ -146,7 +185,7 @@ def _run_task(*, task: AugmentTask, manifests: ManifestStore, overwrite: bool) -
         duration = task.source.duration / task.tempo
         noise_temp_path = _extract_noise_segment(
             source_path=task.source.path,
-            noise_path=task.noise,
+            noise=task.noise,
             duration=duration,
             tempo=task.tempo,
             snr=task.snr or 0,
@@ -201,14 +240,13 @@ def _tempo_adjust(source_path: Path, tempo: float) -> Path:
 def _extract_noise_segment(
     *,
     source_path: Path,
-    noise_path: Path,
+    noise: NoiseSample,
     duration: float,
     tempo: float,
     snr: int,
 ) -> Path:
-    noise_duration = _media_duration_seconds(noise_path)
-    max_start = max(noise_duration - duration, 0.0)
-    start = 0.0 if max_start == 0 else _deterministic_fraction(source_path, noise_path, tempo, snr) * max_start
+    max_start = max(noise.duration - duration, 0.0)
+    start = 0.0 if max_start == 0 else _deterministic_fraction(source_path, noise.path, tempo, snr) * max_start
 
     temp_path = _new_temp_wav_path()
     _run_ffmpeg([
@@ -219,7 +257,7 @@ def _extract_noise_segment(
         "-t",
         f"{duration:.6f}",
         "-i",
-        str(noise_path),
+        str(noise.path),
         "-ar",
         "16000",
         "-ac",

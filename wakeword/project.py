@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+from importlib import resources
 from pathlib import Path
 
 
@@ -45,9 +47,19 @@ GOOGLE_SPEECH_COMMANDS = [
 
 def init_project(project_dir: Path) -> list[Path]:
     data_dir = project_dir / "data"
+    background_audio_dir = project_dir / "background_audio"
     config_path = project_dir / "config.json"
 
     data_dir.mkdir(parents=True, exist_ok=True)
+    background_audio_dir.mkdir(parents=True, exist_ok=True)
+
+    background_noise_files = resources.files("wakeword.google_scd_background_noise")
+    for resource in background_noise_files.iterdir():
+        if not resource.is_file() or resource.name == "__init__.py":
+            continue
+        destination = background_audio_dir / resource.name
+        with resources.as_file(resource) as source:
+            shutil.copyfile(source, destination)
 
     if config_path.exists():
         raise FileExistsError(f"Refusing to overwrite existing config: {config_path}")
@@ -61,4 +73,4 @@ def init_project(project_dir: Path) -> list[Path]:
         encoding="utf-8",
     )
 
-    return [data_dir, config_path]
+    return [data_dir, background_audio_dir, config_path]
