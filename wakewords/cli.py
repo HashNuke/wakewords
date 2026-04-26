@@ -138,7 +138,6 @@ class DataTools:
     def download(
         self,
         google_speech_commands: bool = False,
-        common_voice_sw: bool = False,
         all: bool = False,
         downloads_dir: str | None = None,
         data_dir: str = "data",
@@ -148,7 +147,6 @@ class DataTools:
         _configure_logging(verbose=verbose)
         outputs = download_datasets(
             google_speech_commands=google_speech_commands,
-            common_voice_sw=common_voice_sw,
             all=all,
             downloads_dir=Path(downloads_dir) if downloads_dir else None,
             data_dir=Path(data_dir),
@@ -225,7 +223,6 @@ def _normalize_cli_flags() -> None:
         "--data-dir": "--data_dir",
         "--downloads-dir": "--downloads_dir",
         "--google-speech-commands": "--google_speech_commands",
-        "--common-voice-sw": "--common_voice_sw",
         "--noises-dir": "--noises_dir",
         "--train-ratio": "--train_ratio",
         "--validate-ratio": "--validate_ratio",

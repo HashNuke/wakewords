@@ -56,22 +56,10 @@ This writes the extracted dataset to:
 data/google-speech-commands
 ```
 
-Download and extract the Common Voice 7.0 single-word target segment:
-
-```sh
-COMMONVOICE_API_KEY=<api-key> uv run wakewords download --common-voice-sw
-```
-
-This writes the extracted dataset to:
-
-```text
-data/common-voice-7-single-word
-```
-
 Download and extract all supported external datasets:
 
 ```sh
-COMMONVOICE_API_KEY=<api-key> uv run wakewords download --all
+uv run wakewords download --all
 ```
 
 By default, archives are downloaded into a temporary directory in the current
@@ -79,7 +67,7 @@ directory, extracted, and then deleted. To keep the downloaded archives, pass
 `--downloads-dir`:
 
 ```sh
-COMMONVOICE_API_KEY=<api-key> uv run wakewords download --all --downloads-dir data/downloads
+uv run wakewords download --all --downloads-dir data/downloads
 ```
 
 `--downloads-dir` only controls where archives are retained. Extracted datasets
