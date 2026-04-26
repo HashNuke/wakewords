@@ -12,7 +12,7 @@ Initialize a dataset project in the current directory:
 uv run wakeword init
 ```
 
-This creates an empty `data/` directory plus a prettified `config.json` file containing the Google Speech Commands v0.02 word list and an example custom word.
+This creates an empty `data/` directory, a `background_audio/` directory populated with Google Speech Commands background-noise clips and a `manifest.jsonl` duration manifest, and a prettified `config.json` file containing the Google Speech Commands v0.02 word list and an example custom word.
 
 List voices from the default TTS provider:
 
@@ -77,7 +77,7 @@ Each word directory also gets a `manifest.jsonl` file. Entries use the NeMo mani
 {"audio_filepath": "astra-cr1-t100-clean-nonoise-nosnr.wav", "duration": 0.92, "duration_ms": 920, "label": "astra"}
 ```
 
-Place background-noise clips under `data/_noises_/` as `.wav` files such as `cafe.wav`, `car.wav`, or `office.wav`. The basename is used in augmented filenames.
+By default, augmentation reads background-noise clips from `background_audio/`. If that directory has a `manifest.jsonl` with `{ "audio": "<filename>", "duration_ms": <milliseconds> }` entries, augment uses those durations instead of probing the background files. The basename is used in augmented filenames.
 
 Generate tempo-only and tempo+noise variants in place:
 
