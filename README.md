@@ -57,11 +57,21 @@ Generate with every available voice:
 uv run wakewords generate --all-voices
 ```
 
+Generate with the first five voices returned by the provider:
+
+```sh
+uv run wakewords generate --voices 5
+```
+
 Generate using voices filtered by language or locale:
 
 ```sh
 uv run wakewords generate --lang en
+uv run wakewords generate --lang en --voices 5
 ```
+
+Custom TTS providers can be registered from `config.json`. See
+`docs/custom-providers.md`.
 
 Increase request concurrency:
 
@@ -100,6 +110,29 @@ This command reads `data/<word>/manifest.jsonl`, resolves the local filenames to
 - `data/validation_manifest.jsonl`
 - `data/test_manifest.jsonl`
 
-## Background Sound Credits
+Finetune the default NeMo command-recognition model from those manifests:
 
-- Sea waves by Loredenii: https://freesound.org/people/Loredenii/sounds/851298/
+```sh
+uv run wakewords train
+```
+
+Training artifacts stay inside the initialized project directory under `runs/<run-name>/`:
+
+- `train_config.json`
+- `checkpoints/`
+- `logs/`
+- `models/`
+
+TensorBoard is enabled by default for training runs and writes logs under the run's `logs/` directory. TensorBoard is installed on every platform; NeMo is installed as a package dependency on non-macOS platforms because its ASR dependency chain does not publish macOS wheels. Prepare datasets on macOS, then train on Linux.
+
+Preview the resolved manifests, labels, and output layout without importing NeMo or starting training:
+
+```sh
+uv run wakewords train --dry-run
+```
+
+## License
+
+Copyright (c) 2026 Akash Manohar John under MIT License (See LICENSE file).
+
+**Background Sound:** The background audio embedded in this pypi package comes from the Google Speech Commands dataset and ships with this library for convenience. This is licensed under the same license as the dataset. The details are in the `README.md` file inside of the `wakewords/google_scd_background_noise` dir.

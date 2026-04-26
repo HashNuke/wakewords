@@ -157,19 +157,17 @@ Example fields per sample:
 - `file`
 - `speaker_id`
 - `utterance_id`
-- `is_unknown`
 
 Useful implications for this repo:
 
 - The dataset is already close to the format needed for wake-word classification.
 - Non-target spoken words can be used as hard negatives.
 - `speaker_id` is available, which makes speaker-disjoint validation possible.
-- `_silence_` exists as a class, but silence/background examples may still need custom windowing depending on training setup.
+- The full Speech Commands v2-style task keeps explicit word labels.
 
 ### Word labels
 
-For `v0.02`, Hugging Face keeps explicit Speech Commands word labels rather than
-collapsing them into a single unknown bucket.
+For `v0.02`, Hugging Face keeps explicit Speech Commands word labels.
 
 This repo tracks the selected Speech Commands labels and custom Tincan words in
 `words.json`. Each entry records the label text and its source, so training and
@@ -212,8 +210,6 @@ Minimal example:
 ```json
 {"audio_filepath": "/abs/path/audio/mika_001.wav", "duration": 0.92, "label": "mika"}
 {"audio_filepath": "/abs/path/audio/lyra_014.wav", "duration": 1.03, "label": "lyra"}
-{"audio_filepath": "/abs/path/audio/noise_020.wav", "duration": 1.00, "label": "unknown"}
-{"audio_filepath": "/abs/path/audio/sil_003.wav", "duration": 1.00, "label": "silence"}
 ```
 
 You can generate these combined manifests from the per-word manifests with:
@@ -223,6 +219,43 @@ uv run wakewords manifest --train-ratio 70 --validate-ratio 20 --test-ratio 10
 ```
 
 The split is deterministic and performed per label, with small rounding adjustments when an exact integer split is not possible.
+
+### Training command and outputs
+
+The default training command finetunes the NeMo model named above:
+
+```sh
+uv sync
+uv run wakewords train
+```
+
+Training writes artifacts under the same project directory where `wakewords init`
+was run:
+
+```text
+runs/
+  <timestamp>-commandrecognition_en_matchboxnet3x2x64_v2/
+    train_config.json
+    checkpoints/
+    logs/
+    models/
+      commandrecognition_en_matchboxnet3x2x64_v2.nemo
+```
+
+TensorBoard ships as a package dependency and is enabled by default for real
+training runs. It is useful here because it gives a low-friction view of
+training loss, validation loss, and learning behavior from the run's `logs/`
+directory.
+
+NeMo is installed as a package dependency on non-macOS platforms. Training is
+not supported on macOS because NeMo's ASR dependency chain does not publish
+macOS wheels; use macOS for dataset preparation and Linux for finetuning.
+
+Preview the layout and resolved labels without starting NeMo:
+
+```sh
+uv run wakewords train --dry-run
+```
 
 ### Audio expectations
 
@@ -243,12 +276,9 @@ separate hard-coded list into training configs or scripts. Entries with
 `"source": "google-speech-commands"` can be used for Speech Commands examples,
 negative speech, or any stock command classes included in an experiment.
 
-It is also likely useful to include rejection classes such as:
-
-- `unknown`
-- `silence`
-
-Without explicit negative classes, the classifier is forced to choose one of the wake words even for non-wake audio.
+For this full-model finetuning path, keep labels aligned to actual command words.
+NVIDIA's Speech Commands preprocessing script only creates non-word labels for
+the separate 10+2 subset task; this repo targets the full v2-style model.
 
 ## Recommended dataset organization for this repo
 
@@ -258,8 +288,6 @@ The model does not require a strict directory structure, but a practical local l
 data/
   raw/
     <word-from-words-json>/
-    unknown/
-    silence/
   manifests/
     train_manifest.json
     validation_manifest.json

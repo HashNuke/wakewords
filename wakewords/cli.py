@@ -11,6 +11,7 @@ from wakewords.dataset_manifest import build_split_manifests
 from wakewords.download import download_datasets
 from wakewords.project import init_project
 from wakewords.providers import get_provider
+from wakewords.train import DEFAULT_MODEL_NAME, train_model
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,7 @@ class DataTools:
         text: str | None = None,
         output_dir: str = "data",
         voice: str | None = None,
+        voices: int | None = None,
         all_voices: bool = False,
         lang: str | None = None,
         concurrency: int = 1,
@@ -74,6 +76,7 @@ class DataTools:
             prompts=prompts,
             output_dir=Path(output_dir),
             voice=voice,
+            voices=voices,
             all_voices=all_voices,
             lang=lang,
             concurrency=concurrency,
@@ -154,6 +157,52 @@ class DataTools:
         for output in outputs:
             print(output)
 
+    def train(
+        self,
+        project_dir: str = ".",
+        data_dir: str = "data",
+        runs_dir: str = "runs",
+        run_name: str | None = None,
+        model_name: str = DEFAULT_MODEL_NAME,
+        train_manifest: str = "train_manifest.jsonl",
+        validation_manifest: str = "validation_manifest.jsonl",
+        test_manifest: str = "test_manifest.jsonl",
+        words_file: str | None = None,
+        max_epochs: int = 10,
+        batch_size: int = 32,
+        num_workers: int = 4,
+        accelerator: str = "auto",
+        devices: int | str = "auto",
+        learning_rate: float | None = None,
+        tensorboard: bool = True,
+        dry_run: bool = False,
+        verbose: bool = False,
+    ) -> None:
+        """Finetune the NeMo command-recognition model from local manifests."""
+        _configure_logging(verbose=verbose)
+        run = train_model(
+            project_dir=Path(project_dir),
+            data_dir=Path(data_dir),
+            runs_dir=Path(runs_dir),
+            run_name=run_name,
+            model_name=model_name,
+            train_manifest=train_manifest,
+            validation_manifest=validation_manifest,
+            test_manifest=test_manifest,
+            words_file=Path(words_file) if words_file else None,
+            max_epochs=max_epochs,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            accelerator=accelerator,
+            devices=devices,
+            learning_rate=learning_rate,
+            tensorboard=tensorboard,
+            dry_run=dry_run,
+        )
+
+        for output in run.paths():
+            print(output)
+
 
 def _read_words(path: Path) -> list[str]:
     return [
@@ -185,7 +234,20 @@ def _normalize_cli_flags() -> None:
         "--validate-filename": "--validate_filename",
         "--test-filename": "--test_filename",
         "--model-id": "--model_id",
+        "--model-name": "--model_name",
         "--sample-rate": "--sample_rate",
+        "--project-dir": "--project_dir",
+        "--runs-dir": "--runs_dir",
+        "--run-name": "--run_name",
+        "--train-manifest": "--train_manifest",
+        "--validation-manifest": "--validation_manifest",
+        "--test-manifest": "--test_manifest",
+        "--words-file": "--words_file",
+        "--max-epochs": "--max_epochs",
+        "--batch-size": "--batch_size",
+        "--num-workers": "--num_workers",
+        "--learning-rate": "--learning_rate",
+        "--dry-run": "--dry_run",
     }
     sys.argv = [_normalize_flag(arg, flag_aliases) for arg in sys.argv]
 
