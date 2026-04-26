@@ -73,7 +73,7 @@ Training artifacts are written under `runs/<run-name>/`:
 - `logs/`
 - `models/`
 
-The final exported model is written under the run's `models/` directory.
+The final exported model is written under the `models/` directory of that specific training run.
 
 ## More Details
 
@@ -81,6 +81,6 @@ See [`docs/USAGE.md`](docs/USAGE.md) for command options, split ratios, augmenta
 
 ## License
 
-Copyright (c) 2026 Akash Manohar John under MIT License (See LICENSE file).
+Copyright &copy; 2026 Akash Manohar John, under MIT License (See LICENSE file).
 
-**Background Sound:** The background audio embedded in this pypi package comes from the Google Speech Commands dataset and ships with this library for convenience. This is licensed under the same license as the dataset. The details are in the `README.md` file inside of the `wakewords/google_scd_background_noise` dir.
+**Background sounds:** The background audio embedded in this pypi package comes from the Google Speech Commands dataset and ships with this library for convenience. This is licensed under the same license as the dataset. The details are in the `README.md` file inside of the `wakewords/google_scd_background_noise` dir.
