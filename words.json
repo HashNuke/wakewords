@@ -1,0 +1,194 @@
+[
+  {
+    "word": "yes",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "no",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "up",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "down",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "left",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "right",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "on",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "off",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "stop",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "go",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "zero",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "one",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "two",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "three",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "four",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "five",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "six",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "seven",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "eight",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "nine",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "bed",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "bird",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "cat",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "dog",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "happy",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "house",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "wow",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "forward",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "follow",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "learn",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "visual",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "_silence_",
+    "source": "google-speech-commands"
+  },
+  {
+    "word": "Astra",
+    "source": "tincan-words"
+  },
+  {
+    "word": "Bento",
+    "source": "tincan-words"
+  },
+  {
+    "word": "Celico",
+    "source": "tincan-words"
+  },
+  {
+    "word": "Dexo",
+    "source": "tincan-words"
+  },
+  {
+    "word": "Echo",
+    "source": "tincan-words"
+  },
+  {
+    "word": "Firo",
+    "source": "tincan-words"
+  },
+  {
+    "word": "Geco",
+    "source": "tincan-words"
+  },
+  {
+    "word": "Harto",
+    "source": "tincan-words"
+  },
+  {
+    "word": "Indigo",
+    "source": "tincan-words"
+  },
+  {
+    "word": "Juno",
+    "source": "tincan-words"
+  },
+  {
+    "word": "Koda",
+    "source": "tincan-words"
+  },
+  {
+    "word": "Lyra",
+    "source": "tincan-words"
+  },
+  {
+    "word": "wait",
+    "source": "tincan-words"
+  },
+  {
+    "word": "next",
+    "source": "tincan-words"
+  },
+  {
+    "word": "previous",
+    "source": "tincan-words"
+  },
+  {
+    "word": "backward",
+    "source": "tincan-words"
+  }
+]
