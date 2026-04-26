@@ -49,6 +49,7 @@ def init_project(project_dir: Path) -> list[Path]:
     data_dir = project_dir / "data"
     background_audio_dir = project_dir / "background_audio"
     config_path = project_dir / "config.json"
+    gitignore_path = project_dir / ".gitignore"
 
     data_dir.mkdir(parents=True, exist_ok=True)
     background_audio_dir.mkdir(parents=True, exist_ok=True)
@@ -72,5 +73,22 @@ def init_project(project_dir: Path) -> list[Path]:
         json.dumps(config, indent=2, ensure_ascii=True) + "\n",
         encoding="utf-8",
     )
+    _ensure_gitignore_entry(gitignore_path, "google-speech-commands/")
 
-    return [data_dir, background_audio_dir, config_path]
+    return [data_dir, background_audio_dir, config_path, gitignore_path]
+
+
+def _ensure_gitignore_entry(gitignore_path: Path, entry: str) -> None:
+    if gitignore_path.exists():
+        lines = gitignore_path.read_text(encoding="utf-8").splitlines()
+    else:
+        lines = []
+
+    if entry in lines:
+        return
+
+    text = "\n".join(lines)
+    if text:
+        text += "\n"
+    text += entry + "\n"
+    gitignore_path.write_text(text, encoding="utf-8")

@@ -40,9 +40,9 @@ def build_split_manifests(
             start = end
 
     output_paths = {
-        "train": data_dir / train_filename,
-        "validate": data_dir / validate_filename,
-        "test": data_dir / test_filename,
+        "train": data_dir.parent / train_filename,
+        "validate": data_dir.parent / validate_filename,
+        "test": data_dir.parent / test_filename,
     }
     for split_name, output_path in output_paths.items():
         _write_manifest(output_path, split_entries[split_name])

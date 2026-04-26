@@ -9,11 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from wakewords.download import MATCHBOXNET_MODEL_FILENAME
-
-
 DEFAULT_MODEL_NAME = "commandrecognition_en_matchboxnet3x2x64_v2"
-DEFAULT_BASE_MODEL_PATH = Path("models/base") / MATCHBOXNET_MODEL_FILENAME
 
 
 @dataclass(frozen=True)
@@ -43,7 +39,7 @@ def train_model(
     runs_dir: Path,
     run_name: str | None,
     model_name: str,
-    base_model_path: Path,
+    base_model_path: Path | None,
     train_manifest: str,
     validation_manifest: str,
     test_manifest: str,
@@ -67,11 +63,12 @@ def train_model(
     project_dir = project_dir.resolve()
     data_dir = _resolve_project_path(project_dir, data_dir)
     runs_dir = _resolve_project_path(project_dir, runs_dir)
-    base_model_path = _resolve_project_path(project_dir, base_model_path)
+    if base_model_path is not None:
+        base_model_path = _resolve_project_path(project_dir, base_model_path)
 
-    train_manifest_path = _resolve_project_path(data_dir, Path(train_manifest))
-    validation_manifest_path = _resolve_project_path(data_dir, Path(validation_manifest))
-    test_manifest_path = _resolve_project_path(data_dir, Path(test_manifest))
+    train_manifest_path = _resolve_project_path(project_dir, Path(train_manifest))
+    validation_manifest_path = _resolve_project_path(project_dir, Path(validation_manifest))
+    test_manifest_path = _resolve_project_path(project_dir, Path(test_manifest))
 
     _require_file(train_manifest_path, "train manifest")
     _require_file(validation_manifest_path, "validation manifest")
@@ -93,7 +90,7 @@ def train_model(
 
     train_config = {
         "model_name": model_name,
-        "base_model_path": str(base_model_path),
+        "base_model_path": str(base_model_path) if base_model_path else None,
         "labels": labels,
         "manifests": {
             "train": str(train_manifest_path),
@@ -144,7 +141,7 @@ def _run_nemo_training(
     *,
     run: TrainingRun,
     model_name: str,
-    base_model_path: Path,
+    base_model_path: Path | None,
     labels: list[str],
     train_manifest_path: Path,
     validation_manifest_path: Path,
@@ -165,14 +162,17 @@ def _run_nemo_training(
         raise RuntimeError("NeMo is not installed. Install package dependencies with: uv sync")
     if tensorboard and importlib.util.find_spec("tensorboard") is None:
         raise RuntimeError("TensorBoard is not installed. Install package dependencies with: uv sync")
-    if not base_model_path.is_file():
-        raise FileNotFoundError(f"Missing base model: {base_model_path}. Run `wakewords download` first.")
+    if base_model_path is not None and not base_model_path.is_file():
+        raise FileNotFoundError(f"Missing base model: {base_model_path}")
 
     from lightning.pytorch import Trainer
     from lightning.pytorch.callbacks import ModelCheckpoint
     from nemo.collections.asr.models import EncDecClassificationModel
 
-    model = EncDecClassificationModel.restore_from(restore_path=str(base_model_path))
+    if base_model_path is None:
+        model = EncDecClassificationModel.from_pretrained(model_name=model_name)
+    else:
+        model = EncDecClassificationModel.restore_from(restore_path=str(base_model_path))
     model.change_labels(labels)
     if learning_rate is not None:
         model.cfg.optim.lr = learning_rate

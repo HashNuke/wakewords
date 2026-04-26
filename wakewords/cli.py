@@ -7,11 +7,12 @@ from pathlib import Path
 import fire
 
 from wakewords.augment import augment_dataset
+from wakewords.clean import clean_dataset
 from wakewords.dataset_manifest import build_split_manifests
 from wakewords.download import download_datasets
 from wakewords.project import init_project
 from wakewords.providers import get_provider
-from wakewords.train import DEFAULT_BASE_MODEL_PATH, DEFAULT_MODEL_NAME, train_model
+from wakewords.train import DEFAULT_MODEL_NAME, train_model
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,7 @@ class DataTools:
         self,
         data_dir: str = "data",
         noises_dir: str = "background_audio",
+        target_samples_per_word: int = 4000,
         concurrency: int = 1,
         overwrite: bool = False,
         verbose: bool = False,
@@ -104,6 +106,7 @@ class DataTools:
             noises_dir=Path(noises_dir),
             concurrency=concurrency,
             overwrite=overwrite,
+            target_samples_per_word=target_samples_per_word,
         )
 
         for output in outputs:
@@ -135,19 +138,37 @@ class DataTools:
         for output in outputs.values():
             print(output)
 
+    def clean(
+        self,
+        data_dir: str = "data",
+        generated: bool = False,
+        augmented: bool = False,
+        all: bool = False,
+        verbose: bool = False,
+    ) -> None:
+        """Delete generated clean audio, augmented audio, or both."""
+        _configure_logging(verbose=verbose)
+        outputs = clean_dataset(
+            data_dir=Path(data_dir),
+            generated=generated,
+            augmented=augmented,
+            all=all,
+        )
+
+        for output in outputs:
+            print(output)
+
     def download(
         self,
         downloads_dir: str | None = None,
-        data_dir: str = "data",
-        models_dir: str = "models/base",
+        data_dir: str = ".",
         verbose: bool = False,
     ) -> None:
-        """Download the base model and external speech dataset."""
+        """Download and extract the external speech dataset."""
         _configure_logging(verbose=verbose)
         outputs = download_datasets(
             downloads_dir=Path(downloads_dir) if downloads_dir else None,
             data_dir=Path(data_dir),
-            models_dir=Path(models_dir),
         )
 
         for output in outputs:
@@ -160,7 +181,7 @@ class DataTools:
         runs_dir: str = "runs",
         run_name: str | None = None,
         model_name: str = DEFAULT_MODEL_NAME,
-        base_model_path: str = str(DEFAULT_BASE_MODEL_PATH),
+        base_model_path: str | None = None,
         train_manifest: str = "train_manifest.jsonl",
         validation_manifest: str = "validation_manifest.jsonl",
         test_manifest: str = "test_manifest.jsonl",
@@ -183,7 +204,7 @@ class DataTools:
             runs_dir=Path(runs_dir),
             run_name=run_name,
             model_name=model_name,
-            base_model_path=Path(base_model_path),
+            base_model_path=Path(base_model_path) if base_model_path else None,
             train_manifest=train_manifest,
             validation_manifest=validation_manifest,
             test_manifest=test_manifest,
@@ -222,8 +243,8 @@ def _normalize_cli_flags() -> None:
         "--output-dir": "--output_dir",
         "--data-dir": "--data_dir",
         "--downloads-dir": "--downloads_dir",
-        "--models-dir": "--models_dir",
         "--noises-dir": "--noises_dir",
+        "--target-samples-per-word": "--target_samples_per_word",
         "--train-ratio": "--train_ratio",
         "--validate-ratio": "--validate_ratio",
         "--test-ratio": "--test_ratio",

@@ -223,5 +223,5 @@ __marimo__/
 data/downloads/common-voice-7-single-word.tar.gz
 data/downloads/speech_commands_v0.02.tar.gz
 data/common-voice-7-single-word/
-data/google-speech-commands/
+google-speech-commands/
 .datatools-download-*/

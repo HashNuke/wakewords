@@ -12,7 +12,7 @@ Initialize a dataset project in the current directory:
 uv run wakewords init
 ```
 
-This creates an empty `data/` directory, a `background_audio/` directory populated with Google Speech Commands background-noise clips and a `manifest.jsonl` duration manifest, and a prettified `config.json` file containing the Google Speech Commands v0.02 word list and an example custom word.
+This creates an empty `data/` directory, a `background_audio/` directory populated with Google Speech Commands background-noise clips and a `manifest.jsonl` duration manifest, a prettified `config.json` file containing the Google Speech Commands v0.02 word list and an example custom word, and a `.gitignore` entry for the extracted Google Speech Commands dataset.
 
 List voices from the default TTS provider:
 
@@ -89,14 +89,30 @@ Each word directory also gets a `manifest.jsonl` file. Entries use the NeMo mani
 
 By default, augmentation reads background-noise clips from `background_audio/`. If that directory has a `manifest.jsonl` with `{ "audio": "<filename>", "duration_ms": <milliseconds> }` entries, augment uses those durations instead of probing the background files. The basename is used in augmented filenames.
 
-Generate tempo-only and tempo+noise variants in place:
+Generate tempo, background-noise, and SNR combo variants in place:
 
 ```sh
 uv run wakewords augment
 ```
 
-The augment command scans `data/<word>/` for clean files named like `astra-cr1-t100-clean-nonoise-nosnr.wav`, keeps the existing voice code, picks a deterministic stretch from each noise clip, and writes derived files back into the same word directory.
+The augment command scans `data/<word>/` for clean files named like `astra-cr1-t100-clean-nonoise-nosnr.wav`, keeps the existing voice code, picks deterministic subsets of tempo, background noise, and SNR values for each voice, and writes derived files back into the same word directory. By default, it targets about `4000` total samples per word; for `373` voices that selects `5 tempos x 2 noises x 1 SNR = 10` augmented files per voice, or about `4103` total samples including the clean originals.
 It reuses the clean source metadata from that word directory's `manifest.jsonl` and probes each augmented output separately before recording its final duration.
+
+Change the per-word target with:
+
+```sh
+uv run wakewords augment --target-samples-per-word 4000
+```
+
+Delete generated clean audio, augmented audio, or both:
+
+```sh
+uv run wakewords clean --generated
+uv run wakewords clean --augmented
+uv run wakewords clean --all
+```
+
+Cleaning also updates each word directory's `manifest.jsonl` and removes root split manifests because they may contain stale audio paths.
 
 Build dataset-level train, validation, and test manifests from the per-word manifests:
 
@@ -104,27 +120,28 @@ Build dataset-level train, validation, and test manifests from the per-word mani
 uv run wakewords manifest --train-ratio 70 --validate-ratio 20 --test-ratio 10
 ```
 
-This command reads `data/<word>/manifest.jsonl`, resolves the local filenames to full paths, performs a deterministic per-label split, and writes:
+This command reads `data/<word>/manifest.jsonl`, resolves the local filenames to full paths, performs a deterministic per-label split, and writes project-root manifests:
 
-- `data/train_manifest.jsonl`
-- `data/validation_manifest.jsonl`
-- `data/test_manifest.jsonl`
+- `train_manifest.jsonl`
+- `validation_manifest.jsonl`
+- `test_manifest.jsonl`
 
-Download the external training assets:
+Download Google Speech Commands:
 
 ```sh
 uv run wakewords download
 ```
 
-This writes Google Speech Commands under `data/google-speech-commands` and the
-base MatchboxNet model to
-`models/base/commandrecognition_en_matchboxnet3x2x64_v2.nemo`.
+This writes Google Speech Commands under `google-speech-commands/` in the project root.
 
-Finetune the downloaded NeMo command-recognition model from those manifests:
+Finetune the NeMo command-recognition model from those manifests:
 
 ```sh
 uv run wakewords train
 ```
+
+Training uses NeMo's `from_pretrained()` by default. To train from a local `.nemo`
+file instead, pass `--base-model-path`.
 
 Training artifacts stay inside the initialized project directory under `runs/<run-name>/`:
 

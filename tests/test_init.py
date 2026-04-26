@@ -25,6 +25,7 @@ class InitProjectTests(unittest.TestCase):
                     project_dir / "data",
                     project_dir / "background_audio",
                     project_dir / "config.json",
+                    project_dir / ".gitignore",
                 ],
             )
             self.assertTrue((project_dir / "data").is_dir())
@@ -75,6 +76,10 @@ class InitProjectTests(unittest.TestCase):
                 )
                 + "\n",
             )
+            self.assertEqual(
+                (project_dir / ".gitignore").read_text(encoding="utf-8"),
+                "google-speech-commands/\n",
+            )
 
     def test_init_project_refuses_to_overwrite_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -100,6 +105,7 @@ class InitProjectTests(unittest.TestCase):
                     str(project_dir / "data"),
                     str(project_dir / "background_audio"),
                     str(project_dir / "config.json"),
+                    str(project_dir / ".gitignore"),
                 ],
             )
 

@@ -11,23 +11,14 @@ from tqdm import tqdm
 GOOGLE_SPEECH_COMMANDS_URL = "http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz"
 GOOGLE_SPEECH_COMMANDS_ARCHIVE = "speech_commands_v0.02.tar.gz"
 GOOGLE_SPEECH_COMMANDS_DIR = "google-speech-commands"
-MATCHBOXNET_MODEL_NAME = "commandrecognition_en_matchboxnet3x2x64_v2"
-MATCHBOXNET_MODEL_VERSION = "1.0.0rc1"
-MATCHBOXNET_MODEL_FILENAME = f"{MATCHBOXNET_MODEL_NAME}.nemo"
-MATCHBOXNET_MODEL_URL = (
-    "https://api.ngc.nvidia.com/v2/models/nvidia/nemo/"
-    f"{MATCHBOXNET_MODEL_NAME}/versions/{MATCHBOXNET_MODEL_VERSION}/files/{MATCHBOXNET_MODEL_FILENAME}"
-)
 
 
 def download_datasets(
     *,
     downloads_dir: Path | None = None,
-    data_dir: Path = Path("data"),
-    models_dir: Path = Path("models/base"),
+    data_dir: Path = Path("."),
 ) -> list[Path]:
     data_dir.mkdir(parents=True, exist_ok=True)
-    models_dir.mkdir(parents=True, exist_ok=True)
     outputs: list[Path] = []
 
     if downloads_dir is None:
@@ -36,7 +27,6 @@ def download_datasets(
                 _download_selected(
                     downloads_dir=Path(tmp_dir),
                     data_dir=data_dir,
-                    models_dir=models_dir,
                 )
             )
     else:
@@ -45,7 +35,6 @@ def download_datasets(
             _download_selected(
                 downloads_dir=downloads_dir,
                 data_dir=data_dir,
-                models_dir=models_dir,
             )
         )
 
@@ -56,7 +45,6 @@ def _download_selected(
     *,
     downloads_dir: Path,
     data_dir: Path,
-    models_dir: Path,
 ) -> list[Path]:
     outputs: list[Path] = []
 
@@ -65,10 +53,6 @@ def _download_selected(
     dataset_dir = data_dir / GOOGLE_SPEECH_COMMANDS_DIR
     _extract_tar(archive_path, dataset_dir, description="Extract Google Speech Commands")
     outputs.append(dataset_dir)
-
-    model_path = models_dir / MATCHBOXNET_MODEL_FILENAME
-    _download_file(MATCHBOXNET_MODEL_URL, model_path, description="MatchboxNet base model")
-    outputs.append(model_path)
 
     return outputs
 

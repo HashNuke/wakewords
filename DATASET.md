@@ -102,7 +102,13 @@ SNR means signal-to-noise ratio:
 - signal: the spoken Tincan word
 - noise: background sound such as cafe, car, office, street, fan, or kitchen
 
-Higher SNR means cleaner speech. Start with these noisy variants:
+Higher SNR means cleaner speech. The augmentation command picks deterministic
+subsets of tempo, background-noise, and SNR values per voice so the final sample
+count stays near the configured per-word target. The default target is about
+`4000` samples per word, which is intentionally close to the Google Speech
+Commands per-word scale.
+
+Start with these SNR candidates:
 
 - `snr20` for light background noise
 - `snr10` for noticeable background noise
@@ -243,11 +249,8 @@ runs/
       commandrecognition_en_matchboxnet3x2x64_v2.nemo
 ```
 
-The base model used for finetuning is downloaded by `wakewords download` to:
-
-```text
-models/base/commandrecognition_en_matchboxnet3x2x64_v2.nemo
-```
+Training uses NeMo's `from_pretrained()` by default to load the base model by
+name. To train from a local `.nemo` file instead, pass `--base-model-path`.
 
 TensorBoard ships as a package dependency and is enabled by default for real
 training runs. It is useful here because it gives a low-friction view of

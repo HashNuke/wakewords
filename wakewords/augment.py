@@ -15,8 +15,9 @@ from wakewords.manifest import ManifestStore
 from tqdm import tqdm
 
 
-DEFAULT_TEMPOS = (0.85, 0.90, 0.95, 1.05, 1.10, 1.15, 1.25)
+DEFAULT_TEMPOS = (0.85, 0.90, 0.95, 1.0, 1.05, 1.10, 1.15)
 DEFAULT_SNRS = (20, 10, 5)
+DEFAULT_TARGET_SAMPLES_PER_WORD = 4000
 _BASE_SUFFIX = "-t100-clean-nonoise-nosnr.wav"
 
 
@@ -62,6 +63,7 @@ def augment_dataset(
     overwrite: bool,
     tempos: tuple[float, ...] = DEFAULT_TEMPOS,
     snrs: tuple[int, ...] = DEFAULT_SNRS,
+    target_samples_per_word: int = DEFAULT_TARGET_SAMPLES_PER_WORD,
 ) -> list[Path]:
     if concurrency < 1:
         raise ValueError("concurrency must be >= 1")
@@ -75,7 +77,13 @@ def augment_dataset(
     if not noises:
         raise ValueError(f"No noise wav files found under {noises_dir}.")
 
-    tasks = _build_tasks(sources=sources, noises=noises, tempos=tempos, snrs=snrs)
+    tasks = _build_tasks(
+        sources=sources,
+        noises=noises,
+        tempos=tempos,
+        snrs=snrs,
+        target_samples_per_word=target_samples_per_word,
+    )
     outputs: list[Path] = []
 
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
@@ -153,16 +161,93 @@ def _build_tasks(
     noises: list[NoiseSample],
     tempos: tuple[float, ...],
     snrs: tuple[int, ...],
+    target_samples_per_word: int,
+) -> list[AugmentTask]:
+    if target_samples_per_word < 1:
+        raise ValueError("target_samples_per_word must be >= 1")
+
+    tasks: list[AugmentTask] = []
+    sources_by_word: dict[str, list[SourceSample]] = {}
+    for source in sources:
+        sources_by_word.setdefault(source.word, []).append(source)
+
+    for word_sources in sources_by_word.values():
+        tempo_count, noise_count, snr_count = _combo_shape(
+            voice_count=len(word_sources),
+            target_samples_per_word=target_samples_per_word,
+            tempos_available=len(tempos),
+            noises_available=len(noises),
+            snrs_available=len(snrs),
+        )
+        for source in word_sources:
+            source_tempos = _select_subset(tempos, tempo_count, source=source, category="tempo")
+            source_noises = _select_subset(tuple(noises), noise_count, source=source, category="noise")
+            source_snrs = _select_subset(snrs, snr_count, source=source, category="snr")
+            tasks.extend(_build_source_tasks(source, source_tempos, source_noises, source_snrs))
+    return tasks
+
+
+def _build_source_tasks(
+    source: SourceSample,
+    source_tempos: tuple[float, ...],
+    source_noises: tuple[NoiseSample, ...],
+    source_snrs: tuple[int, ...],
 ) -> list[AugmentTask]:
     tasks: list[AugmentTask] = []
-    for source in sources:
-        for tempo in tempos:
-            tasks.append(AugmentTask(source=source, tempo=tempo, noise=None, snr=None))
-        for tempo in (1.0, *tempos):
-            for noise in noises:
-                for snr in snrs:
-                    tasks.append(AugmentTask(source=source, tempo=tempo, noise=noise, snr=snr))
+    for tempo in source_tempos:
+        for noise in source_noises:
+            for snr in source_snrs:
+                tasks.append(AugmentTask(source=source, tempo=tempo, noise=noise, snr=snr))
     return tasks
+
+
+def _combo_shape(
+    *,
+    voice_count: int,
+    target_samples_per_word: int,
+    tempos_available: int,
+    noises_available: int,
+    snrs_available: int,
+) -> tuple[int, int, int]:
+    if voice_count < 1:
+        raise ValueError("voice_count must be >= 1")
+
+    target_combos_per_voice = max(1.0, (target_samples_per_word - voice_count) / voice_count)
+    best_shape = (1, 1, 1)
+    best_distance = abs(1 - target_combos_per_voice)
+
+    for tempo_count in range(1, tempos_available + 1):
+        for noise_count in range(1, noises_available + 1):
+            for snr_count in range(1, snrs_available + 1):
+                total = tempo_count * noise_count * snr_count
+                distance = abs(total - target_combos_per_voice)
+                shape = (tempo_count, noise_count, snr_count)
+                if distance < best_distance or (distance == best_distance and _shape_score(shape) > _shape_score(best_shape)):
+                    best_shape = shape
+                    best_distance = distance
+    return best_shape
+
+
+def _shape_score(shape: tuple[int, int, int]) -> tuple[int, int, int]:
+    tempo_count, noise_count, snr_count = shape
+    return (tempo_count, noise_count, snr_count)
+
+
+def _select_subset[T](values: tuple[T, ...], count: int, *, source: SourceSample, category: str) -> tuple[T, ...]:
+    ranked = sorted(
+        values,
+        key=lambda value: _selection_key(source=source, category=category, value=value),
+    )
+    return tuple(ranked[:count])
+
+
+def _selection_key(*, source: SourceSample, category: str, value: object) -> str:
+    if isinstance(value, NoiseSample):
+        value_key = str(value.path)
+    else:
+        value_key = str(value)
+    key = "|".join((source.word, source.voice_code, category, value_key))
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
 
 def _run_task(*, task: AugmentTask, manifests: ManifestStore, overwrite: bool) -> Path:
