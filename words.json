@@ -124,10 +124,6 @@
     "source": "google-speech-commands"
   },
   {
-    "word": "_silence_",
-    "source": "google-speech-commands"
-  },
-  {
     "word": "Astra",
     "source": "tincan-words"
   },
