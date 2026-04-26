@@ -7,7 +7,9 @@ requires-python = ">=3.13"
 dependencies = [
     "cartesia>=3.0.2",
     "fire>=0.7.1",
+    "nemo-toolkit[asr]>=2.3.0; sys_platform != 'darwin'",
     "requests>=2.33.1",
+    "tensorboard>=2.20.0",
     "tqdm>=4.67.3",
 ]
 
