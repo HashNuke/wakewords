@@ -18,6 +18,86 @@ Regenerate it after editing either source list:
 uv run python merge_words.py
 ```
 
+## Tincan generated dataset
+
+Generate original Tincan word audio first and place those files directly in the
+local dataset tree with deterministic filenames. Generated audio and derived
+augmentations should live under `data/` and should not be committed.
+
+Use this filename schema for generated and augmented WAV files:
+
+```text
+<word>-<provider>-<voice>-t<tempo>-<env>-<noiseid>-<snr>.wav
+```
+
+Fields:
+
+- `word`: normalized label from `words.json`, such as `astra`
+- `provider`: short provider key, such as `cr` for Cartesia or `gk` for Grok
+- `voice`: stable provider voice id slug
+- `tempo`: tempo multiplier without the decimal point, such as `t100` or `t085`
+- `env`: environment label, such as `clean`, `cafe`, `car`, `office`, or `street`
+- `noiseid`: background-noise clip id, or `nonoise` for clean samples
+- `snr`: signal-to-noise ratio label, or `nosnr` for clean samples
+
+Clean examples:
+
+```text
+astra-cr-voice123-t100-clean-nonoise-nosnr.wav
+astra-cr-voice123-t085-clean-nonoise-nosnr.wav
+```
+
+Noisy examples:
+
+```text
+astra-cr-voice123-t100-cafe-n003-snr20.wav
+astra-cr-voice123-t110-car-n007-snr10.wav
+```
+
+### Speed augmentation with ffmpeg
+
+Use `ffmpeg`'s `atempo` audio filter to make generated speech faster or slower
+without shifting pitch:
+
+```sh
+ffmpeg -i input.wav -filter:a "atempo=1.25" -ar 16000 -ac 1 output_fast.wav
+ffmpeg -i input.wav -filter:a "atempo=0.9" -ar 16000 -ac 1 output_slow.wav
+```
+
+Generate these tempo variants for each original sample:
+
+- `0.85`
+- `0.90`
+- `0.95`
+- `1.05`
+- `1.10`
+- `1.15`
+- `1.25`
+
+Keep the original generated samples as `t100` and write speed-augmented files as
+separate derived variants. These fixed tempo values are enough to teach the
+model tolerance for speaking-rate variation; the model does not need an example
+at every possible in-between tempo.
+
+### Background noise augmentation
+
+Use real background-noise clips for noisy variants rather than generating noise
+with TTS. Keep curated or downloaded noise files outside git, then mix them with
+clean speech at controlled SNR levels.
+
+SNR means signal-to-noise ratio:
+
+- signal: the spoken Tincan word
+- noise: background sound such as cafe, car, office, street, fan, or kitchen
+
+Higher SNR means cleaner speech. Start with these noisy variants:
+
+- `snr20` for light background noise
+- `snr10` for noticeable background noise
+- `snr05` for hard noisy examples
+
+Clean samples should use `clean-nonoise-nosnr`.
+
 ## `google/speech_commands` on Hugging Face
 
 Reference:
