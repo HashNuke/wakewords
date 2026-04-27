@@ -216,11 +216,25 @@ The checkdata command reads `data/custom_words.parquet`, prints the sample count
 median duration, longest duration, longest sample ID, and no-speech count, then
 writes the no-speech sample IDs to `no-speech.txt` in the project root.
 
+Example output:
+
+```text
+parquet: /path/to/project/data/custom_words.parquet
+sources: generated, augmented
+samples: 8206
+median_duration_ms: 920
+longest_duration_ms: 1640
+longest_sample_id: <sample-id>
+no_speech_count: 3
+no_speech_file: /path/to/project/no-speech.txt
+```
+
 Check only generated or augmented rows:
 
 ```sh
 uv run wakewords checkdata --generated
 uv run wakewords checkdata --augmented
+uv run wakewords checkdata --all
 ```
 
 `--all` is the default and includes both generated and augmented rows.
