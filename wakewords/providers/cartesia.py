@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from tqdm import tqdm
@@ -10,8 +11,8 @@ from pathlib import Path
 from cartesia import Cartesia
 
 from wakewords.manifest import ManifestStore
+from wakewords.parquet_store import CustomWordStore, build_generated_row
 from wakewords.providers.base import Voice
-from wakewords.registry import VoiceRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,8 @@ class CartesiaProvider:
         self,
         *,
         prompts: list[str],
-        output_dir: Path,
+        data_dir: Path,
+        parquet_path: Path,
         voice: str | None,
         voices: int | None,
         all_voices: bool,
@@ -71,17 +73,14 @@ class CartesiaProvider:
         overwrite: bool,
     ) -> list[Path]:
         voices = self._select_voices(voice=voice, voices=voices, all_voices=all_voices, lang=lang)
-        registry = VoiceRegistry(output_dir / f"voices.{self.name}.txt")
+        store = CustomWordStore(parquet_path)
         manifests = ManifestStore()
-        for v in voices:
-            registry.short_code(self.short_code, v.id)
         tasks = [
             _GenerationTask(prompt=prompt, voice=selected_voice)
             for selected_voice in voices
             for prompt in prompts
         ]
 
-        output_dir.mkdir(parents=True, exist_ok=True)
         outputs: list[Path] = []
 
         with ThreadPoolExecutor(max_workers=concurrency) as executor:
@@ -89,8 +88,8 @@ class CartesiaProvider:
                 executor.submit(
                     self._generate_one,
                     task=task,
-                    output_dir=output_dir,
-                    registry=registry,
+                    data_dir=data_dir,
+                    store=store,
                     manifests=manifests,
                     lang=lang,
                     model_id=model_id,
@@ -106,7 +105,7 @@ class CartesiaProvider:
                     outputs.append(future.result())
                     bar.update(1)
 
-        return sorted(outputs)
+        return sorted(set(outputs))
 
     def _select_voices(
         self,
@@ -148,8 +147,8 @@ class CartesiaProvider:
         self,
         *,
         task: "_GenerationTask",
-        output_dir: Path,
-        registry: VoiceRegistry,
+        data_dir: Path,
+        store: CustomWordStore,
         manifests: ManifestStore,
         lang: str | None,
         model_id: str,
@@ -157,15 +156,18 @@ class CartesiaProvider:
         encoding: str,
         overwrite: bool,
     ) -> Path:
-        voice_code = registry.short_code(self.short_code, task.voice.id)
+        voice_code = store.voice_code(provider=self.short_code, voice_id=task.voice.id)
         word_slug = _slug(task.prompt)
         filename_word = _filename_token(task.prompt)
-        word_dir = output_dir / word_slug
+        word_dir = data_dir / word_slug
         word_dir.mkdir(parents=True, exist_ok=True)
+        output_path = word_dir / f"{filename_word}-{voice_code}-t100-clean-nonoise-nosnr.wav"
 
-        filename = f"{filename_word}-{voice_code}-t100-clean-nonoise-nosnr.wav"
-        output_path = word_dir / filename
-        if output_path.exists() and not overwrite:
+        existing = store.get(label=word_slug, filename=output_path.name)
+        if existing is not None and not overwrite:
+            audio_bytes = existing.get("audio_bytes")
+            if isinstance(audio_bytes, bytes):
+                output_path.write_bytes(audio_bytes)
             manifests.for_word_dir(word_dir).record(audio_path=output_path, label=word_slug)
             return output_path
 
@@ -188,8 +190,28 @@ class CartesiaProvider:
                 },
                 **generate_kwargs,
             )
-            response.write_to_file(str(output_path))
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+                temp_path = Path(tmp_file.name)
+            try:
+                response.write_to_file(str(temp_path))
+                audio_bytes = temp_path.read_bytes()
+            finally:
+                temp_path.unlink(missing_ok=True)
 
+        store.upsert(
+            build_generated_row(
+                audio_bytes=audio_bytes,
+                filename=output_path.name,
+                label=word_slug,
+                voice_id=task.voice.id,
+                voice_code=voice_code,
+                provider=self.short_code,
+                lang=lang or task.voice.language,
+            ),
+            overwrite=overwrite,
+        )
+
+        output_path.write_bytes(audio_bytes)
         manifests.for_word_dir(word_dir).record(audio_path=output_path, label=word_slug)
 
         return output_path

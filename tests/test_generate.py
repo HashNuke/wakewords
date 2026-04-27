@@ -53,7 +53,8 @@ class GenerateCommandTests(unittest.TestCase):
 
             get_provider.assert_called_once_with("cartesia", config_path=project_dir / "config.json")
             self.assertEqual(provider.prompts, ["dexa", "tincan"])
-            self.assertEqual(provider.output_dir, project_dir / "data")
+            self.assertEqual(provider.data_dir, project_dir / "data")
+            self.assertEqual(provider.parquet_path, project_dir / "data" / "custom_words.parquet")
 
     def test_generate_text_overrides_project_config_words(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -81,11 +82,13 @@ class GenerateCommandTests(unittest.TestCase):
 class _FakeProvider:
     def __init__(self) -> None:
         self.prompts: list[str] = []
-        self.output_dir: Path | None = None
+        self.data_dir: Path | None = None
+        self.parquet_path: Path | None = None
 
     def generate(self, **kwargs: object) -> list[Path]:
         self.prompts = list(kwargs["prompts"])
-        self.output_dir = kwargs["output_dir"]
+        self.data_dir = kwargs["data_dir"]
+        self.parquet_path = kwargs["parquet_path"]
         return []
 
 

@@ -56,7 +56,6 @@ class DataTools:
         provider: str = "cartesia",
         project_dir: str = ".",
         text: str | None = None,
-        output_dir: str = "data",
         voice: str | None = None,
         voices: int | None = None,
         all_voices: bool = False,
@@ -82,7 +81,8 @@ class DataTools:
         tts = get_provider(provider, config_path=config_path)
         outputs = tts.generate(
             prompts=prompts,
-            output_dir=_resolve_project_path(project_path, Path(output_dir)),
+            data_dir=project_path / "data",
+            parquet_path=project_path / "data" / "custom_words.parquet",
             voice=voice,
             voices=voices,
             all_voices=all_voices,
@@ -269,7 +269,6 @@ def _package_version() -> str:
 def _normalize_cli_flags() -> None:
     flag_aliases = {
         "--all-voices": "--all_voices",
-        "--output-dir": "--output_dir",
         "--data-dir": "--data_dir",
         "--downloads-dir": "--downloads_dir",
         "--noises-dir": "--noises_dir",
