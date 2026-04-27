@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
+
+from wakewords.audio import trim_wav_to_speech
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -10,6 +15,31 @@ class Voice:
     id: str
     name: str | None = None
     language: str | None = None
+
+
+@dataclass(frozen=True)
+class GeneratedAudioContext:
+    prompt: str
+    label: str
+    provider: str
+    voice_id: str
+    voice_code: str
+    sample_id: str
+
+
+def prepare_generated_audio(audio_bytes: bytes, *, context: GeneratedAudioContext) -> bytes | None:
+    processed_audio = trim_wav_to_speech(audio_bytes)
+    if processed_audio is None:
+        logger.warning(
+            "Skipping generated sample because VAD detected no speech: prompt=%r label=%s provider=%s voice_id=%s voice_code=%s sample_id=%s",
+            context.prompt,
+            context.label,
+            context.provider,
+            context.voice_id,
+            context.voice_code,
+            context.sample_id,
+        )
+    return processed_audio
 
 
 class TTSProvider(Protocol):

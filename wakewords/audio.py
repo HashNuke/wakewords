@@ -19,7 +19,7 @@ def trim_wav_to_speech(
     *,
     padding_ms: int = DEFAULT_SPEECH_PADDING_MS,
     min_duration_ms: int = DEFAULT_MIN_TRIM_DURATION_MS,
-) -> bytes:
+) -> bytes | None:
     try:
         wav_data = _read_pcm16_mono_wav(audio_bytes)
     except ValueError as exc:
@@ -27,8 +27,6 @@ def trim_wav_to_speech(
         return audio_bytes
 
     duration_ms = round(len(wav_data.samples) / wav_data.sample_rate * 1000)
-    if duration_ms <= min_duration_ms:
-        return audio_bytes
 
     try:
         timestamps = _speech_timestamps(wav_data.samples, sample_rate=wav_data.sample_rate)
@@ -37,8 +35,8 @@ def trim_wav_to_speech(
         return audio_bytes
 
     if not timestamps:
-        logger.warning("Silero VAD detected no speech in generated audio; keeping original audio.")
-        return audio_bytes
+        logger.warning("Silero VAD detected no speech in generated audio; skipping generated sample.")
+        return None
 
     try:
         speech_start = min(_timestamp_frame(timestamp, "start") for timestamp in timestamps)
@@ -49,6 +47,9 @@ def trim_wav_to_speech(
 
     if speech_start < 0 or speech_end <= speech_start:
         logger.warning("Silero VAD returned invalid speech timestamps; keeping original audio.")
+        return audio_bytes
+
+    if duration_ms <= min_duration_ms:
         return audio_bytes
 
     padding_frames = round(wav_data.sample_rate * padding_ms / 1000)

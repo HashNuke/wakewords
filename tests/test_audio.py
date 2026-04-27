@@ -40,16 +40,19 @@ class AudioTrimTests(unittest.TestCase):
 
         self.assertEqual(probe_wav_bytes(trimmed), (16000, 1, 1400))
 
-    def test_trim_wav_to_speech_skips_vad_for_audio_at_or_below_threshold(self) -> None:
+    def test_trim_wav_to_speech_validates_but_does_not_trim_audio_at_or_below_threshold(self) -> None:
         audio_bytes = _wav_bytes(_silence(100) + _tone(900) + _silence(200))
 
-        with mock.patch("wakewords.audio._speech_timestamps") as speech_timestamps:
+        with mock.patch(
+            "wakewords.audio._speech_timestamps",
+            return_value=[{"start": _frames(100), "end": _frames(1000)}],
+        ) as speech_timestamps:
             trimmed = trim_wav_to_speech(audio_bytes)
 
         self.assertEqual(trimmed, audio_bytes)
-        speech_timestamps.assert_not_called()
+        speech_timestamps.assert_called_once()
 
-    def test_trim_wav_to_speech_keeps_original_when_vad_finds_no_speech(self) -> None:
+    def test_trim_wav_to_speech_returns_none_when_vad_finds_no_speech(self) -> None:
         audio_bytes = _wav_bytes(_silence(1500))
 
         with (
@@ -58,7 +61,7 @@ class AudioTrimTests(unittest.TestCase):
         ):
             trimmed = trim_wav_to_speech(audio_bytes)
 
-        self.assertEqual(trimmed, audio_bytes)
+        self.assertIsNone(trimmed)
 
     def test_trim_wav_to_speech_keeps_original_when_vad_fails(self) -> None:
         audio_bytes = _wav_bytes(_silence(1500))

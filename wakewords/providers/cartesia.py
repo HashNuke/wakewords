@@ -9,9 +9,8 @@ from pathlib import Path
 
 from cartesia import Cartesia
 
-from wakewords.audio import trim_wav_to_speech
 from wakewords.parquet_store import CustomWordStore, build_generated_row
-from wakewords.providers.base import Voice
+from wakewords.providers.base import GeneratedAudioContext, Voice, prepare_generated_audio
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +100,7 @@ class CartesiaProvider:
                     wrote_rows = future.result() or wrote_rows
                     bar.update(1)
 
-        return [parquet_path] if wrote_rows or tasks else []
+        return [parquet_path] if wrote_rows else []
 
     def _select_voices(
         self,
@@ -174,7 +173,19 @@ class CartesiaProvider:
                 **generate_kwargs,
             )
             audio_bytes = response.read()
-            audio_bytes = trim_wav_to_speech(audio_bytes)
+            audio_bytes = prepare_generated_audio(
+                audio_bytes,
+                context=GeneratedAudioContext(
+                    prompt=task.prompt,
+                    label=task.word_slug,
+                    provider=self.short_code,
+                    voice_id=task.voice.id,
+                    voice_code=task.voice_code,
+                    sample_id=task.sample_id,
+                ),
+            )
+            if audio_bytes is None:
+                return False
 
         store.upsert(
             build_generated_row(
