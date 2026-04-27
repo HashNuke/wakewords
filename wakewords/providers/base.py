@@ -27,6 +27,12 @@ class GeneratedAudioContext:
     sample_id: str
 
 
+@dataclass(frozen=True)
+class GenerationPrompt:
+    tts_input: str
+    label: str
+
+
 def prepare_generated_audio(audio_bytes: bytes, *, context: GeneratedAudioContext) -> bytes | None:
     processed_audio = trim_wav_to_speech(audio_bytes)
     if processed_audio is None:
@@ -56,7 +62,7 @@ class TTSProvider(Protocol):
     def generate(
         self,
         *,
-        prompts: list[str],
+        prompts: list[GenerationPrompt],
         data_dir: Path,
         parquet_path: Path,
         voice: str | None,

@@ -10,7 +10,7 @@ from unittest import mock
 
 from wakewords.cli import DataTools
 from wakewords.parquet_store import CustomWordStore
-from wakewords.providers.base import GeneratedAudioContext, Voice, prepare_generated_audio
+from wakewords.providers.base import GeneratedAudioContext, GenerationPrompt, Voice, prepare_generated_audio
 from wakewords.providers.cartesia import CartesiaProvider, _build_tasks
 
 
@@ -55,9 +55,26 @@ class GenerateCommandTests(unittest.TestCase):
                 DataTools().generate(project_dir=str(project_dir))
 
             get_provider.assert_called_once_with("cartesia", config_path=project_dir / "config.json")
-            self.assertEqual(provider.prompts, ["dexa", "tincan"])
+            self.assertEqual(
+                provider.prompts,
+                [GenerationPrompt(tts_input="dexa", label="dexa"), GenerationPrompt(tts_input="tincan", label="tincan")],
+            )
             self.assertEqual(provider.data_dir, project_dir / "data")
             self.assertEqual(provider.parquet_path, project_dir / "data" / "custom_words.parquet")
+
+    def test_generate_reads_object_custom_words_from_project_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            (project_dir / "config.json").write_text(
+                json.dumps({"custom_words": [{"tts_input": "Hey Astra", "label": "astra"}]}) + "\n",
+                encoding="utf-8",
+            )
+            provider = _FakeProvider()
+
+            with mock.patch("wakewords.cli.get_provider", return_value=provider):
+                DataTools().generate(project_dir=str(project_dir))
+
+            self.assertEqual(provider.prompts, [GenerationPrompt(tts_input="Hey Astra", label="astra")])
 
     def test_generate_text_overrides_project_config_words(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -71,7 +88,7 @@ class GenerateCommandTests(unittest.TestCase):
             with mock.patch("wakewords.cli.get_provider", return_value=provider):
                 DataTools().generate(project_dir=str(project_dir), text="single")
 
-            self.assertEqual(provider.prompts, ["single"])
+            self.assertEqual(provider.prompts, [GenerationPrompt(tts_input="single", label="single")])
 
     def test_generate_rejects_empty_custom_words(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -85,14 +102,17 @@ class GenerateCommandTests(unittest.TestCase):
         voice = Voice(id="voice-1", name="Voice 1", language="en")
 
         tasks = _build_tasks(
-            prompts=["Hey Astra", "hey-astra"],
+            prompts=[
+                GenerationPrompt(tts_input="Hey Astra", label="astra"),
+                GenerationPrompt(tts_input="Astra", label="astra"),
+            ],
             voices=[voice],
             voice_codes={voice.id: "cr1"},
             provider="cr",
         )
 
         self.assertEqual(len(tasks), 1)
-        self.assertEqual(tasks[0].word_slug, "hey-astra")
+        self.assertEqual(tasks[0].word_slug, "astra")
         self.assertTrue(tasks[0].sample_id)
 
     def test_cartesia_generate_writes_only_parquet(self) -> None:
@@ -103,13 +123,14 @@ class GenerateCommandTests(unittest.TestCase):
             provider.list_voices = lambda **_: [  # type: ignore[method-assign]
                 Voice(id="voice-1", name="Voice 1", language="en")
             ]
+            client = _FakeCartesiaClient()
 
             with (
-                mock.patch("wakewords.providers.cartesia._client", return_value=_FakeCartesiaClient()),
+                mock.patch("wakewords.providers.cartesia._client", return_value=client),
                 mock.patch("wakewords.providers.cartesia.prepare_generated_audio", side_effect=lambda audio_bytes, *, context: audio_bytes),
             ):
                 outputs = provider.generate(
-                    prompts=["Hey Astra"],
+                    prompts=[GenerationPrompt(tts_input="Hey Astra", label="astra")],
                     data_dir=data_dir,
                     parquet_path=data_dir / "custom_words.parquet",
                     voice=None,
@@ -124,11 +145,12 @@ class GenerateCommandTests(unittest.TestCase):
                 )
 
             self.assertEqual(outputs, [data_dir / "custom_words.parquet"])
-            self.assertFalse((data_dir / "hey-astra").exists())
-            self.assertFalse((data_dir / "hey-astra" / "manifest.jsonl").exists())
+            self.assertEqual(client.transcripts, ["Hey Astra"])
+            self.assertFalse((data_dir / "astra").exists())
+            self.assertFalse((data_dir / "astra" / "manifest.jsonl").exists())
             rows = CustomWordStore(data_dir / "custom_words.parquet").rows()
             self.assertEqual(len(rows), 1)
-            self.assertEqual(rows[0]["label"], "hey-astra")
+            self.assertEqual(rows[0]["label"], "astra")
             self.assertNotIn("filename", rows[0])
             self.assertIsInstance(rows[0]["audio_bytes"], bytes)
 
@@ -146,7 +168,7 @@ class GenerateCommandTests(unittest.TestCase):
                 mock.patch("wakewords.providers.cartesia.prepare_generated_audio", return_value=None),
             ):
                 outputs = provider.generate(
-                    prompts=["Hey Astra"],
+                    prompts=[GenerationPrompt(tts_input="Hey Astra", label="astra")],
                     data_dir=data_dir,
                     parquet_path=data_dir / "custom_words.parquet",
                     voice=None,
@@ -188,7 +210,7 @@ class GenerateCommandTests(unittest.TestCase):
 
 class _FakeProvider:
     def __init__(self) -> None:
-        self.prompts: list[str] = []
+        self.prompts: list[GenerationPrompt] = []
         self.data_dir: Path | None = None
         self.parquet_path: Path | None = None
 
@@ -202,6 +224,7 @@ class _FakeProvider:
 class _FakeCartesiaClient:
     def __init__(self) -> None:
         self.tts = self
+        self.transcripts: list[str] = []
 
     def __enter__(self) -> "_FakeCartesiaClient":
         return self
@@ -210,6 +233,7 @@ class _FakeCartesiaClient:
         return None
 
     def generate(self, **kwargs: object) -> "_FakeTtsResponse":
+        self.transcripts.append(str(kwargs["transcript"]))
         return _FakeTtsResponse()
 
 

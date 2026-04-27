@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 import tomllib
 from importlib import metadata
@@ -14,6 +15,7 @@ from wakewords.clean import clean_dataset
 from wakewords.dataset_manifest import build_split_manifests
 from wakewords.download import download_datasets
 from wakewords.project import init_project
+from wakewords.providers.base import GenerationPrompt
 from wakewords.providers import get_provider
 from wakewords.train import DEFAULT_MODEL_NAME, train_model
 
@@ -74,7 +76,7 @@ class DataTools:
 
         project_path = Path(project_dir)
         config_path = project_path / "config.json"
-        prompts = [text] if text else _load_generate_prompts(config_path=config_path)
+        prompts = [_prompt_from_text(text)] if text else _load_generate_prompts(config_path=config_path)
         if not prompts:
             raise ValueError("No text to generate. Provide --text or add custom_words to config.json.")
 
@@ -230,14 +232,34 @@ class DataTools:
             print(output)
 
 
-def _load_generate_prompts(*, config_path: Path) -> list[str]:
+def _load_generate_prompts(*, config_path: Path) -> list[GenerationPrompt]:
     if not config_path.exists():
         raise FileNotFoundError(f"Project config not found: {config_path}")
     config = json.loads(config_path.read_text(encoding="utf-8"))
     custom_words = config.get("custom_words")
     if not isinstance(custom_words, list):
         return []
-    return [word for word in custom_words if isinstance(word, str) and word]
+    prompts: list[GenerationPrompt] = []
+    for word in custom_words:
+        if isinstance(word, str) and word:
+            prompts.append(_prompt_from_text(word))
+            continue
+        if not isinstance(word, dict):
+            continue
+        tts_input = word.get("tts_input")
+        label = word.get("label")
+        if isinstance(tts_input, str) and tts_input and isinstance(label, str) and label:
+            prompts.append(GenerationPrompt(tts_input=tts_input, label=label))
+    return prompts
+
+
+def _prompt_from_text(text: str) -> GenerationPrompt:
+    return GenerationPrompt(tts_input=text, label=_slug(text))
+
+
+def _slug(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug or "untitled"
 
 
 def _resolve_project_path(project_dir: Path, path: Path) -> Path:

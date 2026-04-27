@@ -317,8 +317,21 @@ def _load_configured_labels(*, project_dir: Path) -> list[str]:
     config_path = project_dir / "config.json"
     if config_path.exists():
         config = json.loads(config_path.read_text(encoding="utf-8"))
-        return _dedupe([*config.get("custom_words", []), *config.get("google_speech_commands", [])])
+        return _dedupe([*_custom_word_labels(config.get("custom_words")), *config.get("google_speech_commands", [])])
     return []
+
+
+def _custom_word_labels(custom_words: object) -> list[str]:
+    if not isinstance(custom_words, list):
+        return []
+    labels: list[str] = []
+    for word in custom_words:
+        if isinstance(word, str):
+            labels.append(word)
+            continue
+        if isinstance(word, dict) and isinstance(word.get("label"), str):
+            labels.append(word["label"])
+    return labels
 
 
 def _load_manifest_labels(manifest_paths: list[Path]) -> list[str]:

@@ -21,7 +21,7 @@ class TrainTests(unittest.TestCase):
             for filename in ("train_manifest.jsonl", "validation_manifest.jsonl", "test_manifest.jsonl"):
                 _write_manifest(project_dir / filename)
             (project_dir / "config.json").write_text(
-                json.dumps({"custom_words": ["dexa"], "google_speech_commands": ["yes"]}) + "\n",
+                json.dumps({"custom_words": [{"tts_input": "Dexa", "label": "dexa"}], "google_speech_commands": ["yes"]}) + "\n",
                 encoding="utf-8",
             )
 

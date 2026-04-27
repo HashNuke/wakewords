@@ -10,7 +10,7 @@ from pathlib import Path
 from cartesia import Cartesia
 
 from wakewords.parquet_store import CustomWordStore, build_generated_row
-from wakewords.providers.base import GeneratedAudioContext, Voice, prepare_generated_audio
+from wakewords.providers.base import GeneratedAudioContext, GenerationPrompt, Voice, prepare_generated_audio
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class CartesiaProvider:
     def generate(
         self,
         *,
-        prompts: list[str],
+        prompts: list[GenerationPrompt],
         data_dir: Path,
         parquet_path: Path,
         voice: str | None,
@@ -211,20 +211,20 @@ class _GenerationTask:
         self.sample_id = sample_id
 
 
-def _build_tasks(*, prompts: list[str], voices: list[Voice], voice_codes: dict[str, str], provider: str) -> list[_GenerationTask]:
+def _build_tasks(*, prompts: list[GenerationPrompt], voices: list[Voice], voice_codes: dict[str, str], provider: str) -> list[_GenerationTask]:
     tasks: list[_GenerationTask] = []
     seen: set[str] = set()
     for selected_voice in voices:
         voice_code = voice_codes[selected_voice.id]
         for prompt in prompts:
-            word_slug = _slug(prompt)
+            word_slug = prompt.label
             sample_id = _generated_sample_id(label=word_slug, provider=provider, voice_id=selected_voice.id)
             if sample_id in seen:
                 continue
             seen.add(sample_id)
             tasks.append(
                 _GenerationTask(
-                    prompt=prompt,
+                    prompt=prompt.tts_input,
                     voice=selected_voice,
                     voice_code=voice_code,
                     word_slug=word_slug,
