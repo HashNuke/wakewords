@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 from wakewords import cli
+from wakewords.lfs import GitLfsPointerError
 from wakewords.train import DEFAULT_MODEL_NAME, train_model
 
 
@@ -255,6 +256,38 @@ class TrainTests(unittest.TestCase):
                     dry_run=True,
                 )
 
+    def test_train_model_reports_lfs_manifest_audio(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir).resolve()
+            data_dir = project_dir / "data"
+            data_dir.mkdir()
+            audio_path = project_dir / "yes.wav"
+            audio_path.write_bytes(_lfs_pointer_bytes(size=32000))
+            for filename in ("train_manifest.jsonl", "validation_manifest.jsonl", "test_manifest.jsonl"):
+                _write_manifest_with_audio(project_dir / filename, audio_path)
+
+            with self.assertRaisesRegex(GitLfsPointerError, "git lfs pull"):
+                train_model(
+                    project_dir=project_dir,
+                    data_dir=Path("data"),
+                    runs_dir=Path("runs"),
+                    run_name="lfs audio",
+                    model_name=DEFAULT_MODEL_NAME,
+                    base_model_path=None,
+                    from_checkpoint=None,
+                    train_manifest="train_manifest.jsonl",
+                    validation_manifest="validation_manifest.jsonl",
+                    test_manifest="test_manifest.jsonl",
+                    max_epochs=1,
+                    batch_size=2,
+                    num_workers=0,
+                    accelerator="cpu",
+                    devices=1,
+                    learning_rate=None,
+                    tensorboard=True,
+                    dry_run=True,
+                )
+
 
 def _write_manifest(path: Path) -> None:
     entries = [
@@ -262,6 +295,22 @@ def _write_manifest(path: Path) -> None:
         {"audio_filepath": str(path.parent / "unknown.wav"), "duration": 1.0, "label": "unknown"},
     ]
     path.write_text("\n".join(json.dumps(entry) for entry in entries) + "\n", encoding="utf-8")
+
+
+def _write_manifest_with_audio(path: Path, audio_path: Path) -> None:
+    entries = [
+        {"audio_filepath": str(audio_path), "duration": 1.0, "label": "yes"},
+        {"audio_filepath": str(path.parent / "unknown.wav"), "duration": 1.0, "label": "unknown"},
+    ]
+    path.write_text("\n".join(json.dumps(entry) for entry in entries) + "\n", encoding="utf-8")
+
+
+def _lfs_pointer_bytes(*, size: int) -> bytes:
+    return (
+        b"version https://git-lfs.github.com/spec/v1\n"
+        b"oid sha256:0000000000000000000000000000000000000000000000000000000000000000\n"
+        + f"size {size}\n".encode("ascii")
+    )
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ from wakewords.augment import (
     _select_subset,
     augment_dataset,
 )
+from wakewords.lfs import GitLfsPointerError
 from wakewords.parquet_store import CustomWordStore, build_generated_row
 
 
@@ -142,6 +143,41 @@ class AugmentTests(unittest.TestCase):
             self.assertEqual(augmented["noise_type"], "rain")
             self.assertEqual(augmented["snr"], 10)
 
+    def test_augment_dataset_reports_lfs_background_audio(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            data_dir = project_dir / "data"
+            noises_dir = project_dir / "background_audio"
+            noises_dir.mkdir()
+            (noises_dir / "rain.wav").write_bytes(_lfs_pointer_bytes(size=1234))
+            (noises_dir / "manifest.jsonl").write_text(
+                json.dumps({"audio": "rain.wav", "duration_ms": 1000}) + "\n",
+                encoding="utf-8",
+            )
+            store = CustomWordStore(data_dir / "custom_words.parquet")
+            store.upsert(
+                build_generated_row(
+                    audio_bytes=_wav_bytes(),
+                    label="yes",
+                    voice_id="voice-1",
+                    voice_code="cr1",
+                    provider="cr",
+                    lang="en",
+                ),
+                overwrite=False,
+            )
+
+            with self.assertRaisesRegex(GitLfsPointerError, "git lfs pull"):
+                augment_dataset(
+                    data_dir=data_dir,
+                    noises_dir=noises_dir,
+                    concurrency=1,
+                    overwrite=False,
+                    tempos=(1.0,),
+                    snrs=(10,),
+                    target_samples_per_word=2,
+                )
+
     def test_combo_shape_tracks_target_as_voice_count_changes(self) -> None:
         self.assertEqual(
             _combo_shape(
@@ -208,6 +244,14 @@ def _temp_wav(audio_bytes: bytes) -> Path:
 
 def _copy_to_temp_wav(source_path: Path, tempo: float) -> Path:
     return _temp_wav(source_path.read_bytes())
+
+
+def _lfs_pointer_bytes(*, size: int) -> bytes:
+    return (
+        b"version https://git-lfs.github.com/spec/v1\n"
+        b"oid sha256:0000000000000000000000000000000000000000000000000000000000000000\n"
+        + f"size {size}\n".encode("ascii")
+    )
 
 
 if __name__ == "__main__":

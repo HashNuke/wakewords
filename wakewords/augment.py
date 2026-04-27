@@ -12,8 +12,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
-from wakewords.parquet_store import CustomWordStore, build_augmented_row
 from tqdm import tqdm
+
+from wakewords.lfs import require_materialized_files
+from wakewords.parquet_store import CustomWordStore, build_augmented_row
 
 
 DEFAULT_TEMPOS = (0.85, 0.90, 0.95, 1.0, 1.05, 1.10, 1.15)
@@ -62,6 +64,16 @@ def augment_dataset(
         raise ValueError("concurrency must be >= 1")
 
     parquet_path = data_dir / "custom_words.parquet"
+    require_materialized_files(
+        [parquet_path],
+        context="augmenting custom words",
+        include_hint="data/custom_words.parquet",
+    )
+    require_materialized_files(
+        sorted(noises_dir.glob("*.wav")),
+        context="augmenting with background audio",
+        include_hint=f"{noises_dir}/*.wav",
+    )
     store = CustomWordStore(parquet_path)
     sources = _collect_sources(store)
     if not sources:

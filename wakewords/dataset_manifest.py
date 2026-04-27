@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 
 from wakewords.download import GOOGLE_SPEECH_COMMANDS_DIR
+from wakewords.lfs import require_materialized_files
 from wakewords.manifest import probe_wav_duration
 from wakewords.parquet_store import CustomWordStore
 
@@ -56,12 +57,28 @@ def build_split_manifests(
 
 def _load_grouped_entries(*, data_dir: Path, google_data_dir: Path | None) -> dict[str, list[dict[str, object]]]:
     grouped: dict[str, list[dict[str, object]]] = {}
+    require_materialized_files(
+        [data_dir / "custom_words.parquet"],
+        context="building manifests from custom words",
+        include_hint="data/custom_words.parquet",
+    )
     for entry in _materialize_custom_word_entries(data_dir):
         grouped.setdefault(str(entry["label"]), []).append(entry)
 
     configured_google_words = _load_configured_google_words(data_dir.parent / "config.json")
     speech_commands_dir = google_data_dir or _default_google_speech_commands_dir(data_dir)
     if configured_google_words and speech_commands_dir.exists():
+        google_audio_paths = [
+            audio_path
+            for word in configured_google_words
+            if word != "_background_noise_"
+            for audio_path in sorted((speech_commands_dir / word).glob("*.wav"))
+        ]
+        require_materialized_files(
+            google_audio_paths,
+            context="building manifests from Google Speech Commands",
+            include_hint=f"{speech_commands_dir}/**/*.wav",
+        )
         for entry in _load_google_speech_command_entries(speech_commands_dir, configured_google_words):
             grouped.setdefault(str(entry["label"]), []).append(entry)
     return grouped

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 import struct
+import tempfile
 import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -131,7 +132,19 @@ class CustomWordStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         rows = self.rows()
         table = pa.Table.from_pylist(rows, schema=_SCHEMA)
-        pq.write_table(table, self.path)
+        temp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                dir=self.path.parent,
+                suffix=".parquet.tmp",
+                delete=False,
+            ) as temp_file:
+                temp_path = Path(temp_file.name)
+            pq.write_table(table, temp_path)
+            temp_path.replace(self.path)
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
 
     def _track_voice_code(self, row: dict[str, object]) -> None:
         provider = _require_str(row, "provider")

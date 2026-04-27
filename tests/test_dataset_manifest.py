@@ -8,6 +8,7 @@ import wave
 from pathlib import Path
 
 from wakewords.dataset_manifest import build_split_manifests
+from wakewords.lfs import GitLfsPointerError
 from wakewords.parquet_store import CustomWordStore, build_generated_row
 
 
@@ -169,6 +170,27 @@ class DatasetManifestTests(unittest.TestCase):
                         _manifest_basenames(second_project_dir / "data" / "manifests" / manifest_name),
                     )
 
+    def test_build_split_manifests_reports_lfs_google_audio(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            (project_dir / "config.json").write_text(
+                json.dumps({"google_speech_commands": ["yes"]}) + "\n",
+                encoding="utf-8",
+            )
+            data_dir = project_dir / "data"
+            data_dir.mkdir()
+            yes_dir = project_dir / "google-speech-commands" / "yes"
+            yes_dir.mkdir(parents=True)
+            (yes_dir / "sample.wav").write_bytes(_lfs_pointer_bytes(size=32000))
+
+            with self.assertRaisesRegex(GitLfsPointerError, "git lfs pull"):
+                build_split_manifests(
+                    data_dir=data_dir,
+                    train_ratio=1,
+                    validate_ratio=0,
+                    test_ratio=0,
+                )
+
 
 def _wav_bytes(*, duration_ms: int = 250) -> bytes:
     sample_rate = 16000
@@ -209,6 +231,14 @@ def _write_google_project(project_dir: Path, *, word: str, sample_count: int) ->
 
 def _manifest_basenames(path: Path) -> list[str]:
     return sorted(Path(str(entry["audio_filepath"])).name for entry in _read_jsonl(path))
+
+
+def _lfs_pointer_bytes(*, size: int) -> bytes:
+    return (
+        b"version https://git-lfs.github.com/spec/v1\n"
+        b"oid sha256:0000000000000000000000000000000000000000000000000000000000000000\n"
+        + f"size {size}\n".encode("ascii")
+    )
 
 
 if __name__ == "__main__":

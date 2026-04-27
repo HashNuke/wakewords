@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from wakewords.lfs import manifest_audio_paths, require_materialized_files
+
 DEFAULT_MODEL_NAME = "commandrecognition_en_matchboxnet3x2x64_v2"
 
 
@@ -86,10 +88,27 @@ def train_model(
     _require_file(train_manifest_path, "train manifest")
     _require_file(validation_manifest_path, "validation manifest")
     _require_file(test_manifest_path, "test manifest")
+    manifest_paths = [train_manifest_path, validation_manifest_path, test_manifest_path]
+    require_materialized_files(
+        manifest_paths,
+        context="training from manifest files",
+        include_hint="data/manifests/*.jsonl",
+    )
+    require_materialized_files(
+        manifest_audio_paths(manifest_paths),
+        context="training from manifest audio",
+        include_hint="data/**/*.wav",
+    )
+    model_inputs = [path for path in (base_model_path, from_checkpoint) if path is not None]
+    require_materialized_files(
+        model_inputs,
+        context="training from model/checkpoint inputs",
+        include_hint="models/**,runs/**",
+    )
 
     labels = _load_labels(
         project_dir=project_dir,
-        manifest_paths=[train_manifest_path, validation_manifest_path, test_manifest_path],
+        manifest_paths=manifest_paths,
     )
     if len(labels) < 2:
         raise ValueError("Training requires at least two labels.")

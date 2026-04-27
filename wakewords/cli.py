@@ -17,6 +17,7 @@ from wakewords.dataset_manifest import build_split_manifests
 from wakewords.download import download_datasets
 from wakewords.export import export_model
 from wakewords.generate import generate_audio
+from wakewords.lfs import GitLfsPointerError
 from wakewords.project import init_project
 from wakewords.providers.base import GenerationPrompt, VoiceSelectionConfig
 from wakewords.providers import get_provider
@@ -396,7 +397,11 @@ def main() -> None:
     if _is_version_request():
         print(_package_version())
         return
-    fire.Fire(DataTools())
+    try:
+        fire.Fire(DataTools())
+    except GitLfsPointerError as exc:
+        print(exc, file=sys.stderr)
+        raise SystemExit(1)
 
 
 def _is_version_request() -> bool:
