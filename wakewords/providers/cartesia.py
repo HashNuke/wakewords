@@ -95,7 +95,7 @@ class CartesiaProvider:
                 for task in tasks
             ]
 
-            with tqdm(total=len(futures), unit="file") as bar:
+            with tqdm(total=len(futures), unit="sample") as bar:
                 for future in as_completed(futures):
                     wrote_rows = future.result() or wrote_rows
                     bar.update(1)

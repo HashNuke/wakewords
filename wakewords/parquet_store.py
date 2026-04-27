@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-import io
 import re
+import struct
 import threading
-import wave
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -218,12 +217,55 @@ def build_augmented_row(
 
 
 def probe_wav_bytes(audio_bytes: bytes) -> tuple[int, int, int]:
-    with wave.open(io.BytesIO(audio_bytes), "rb") as wav_file:
-        sample_rate = wav_file.getframerate()
-        channels = wav_file.getnchannels()
-        frame_count = wav_file.getnframes()
-    duration_ms = round(frame_count / sample_rate * 1000)
+    sample_rate, channels, byte_rate, data_start, declared_data_size = _parse_wav_chunks(audio_bytes)
+    available_data_size = max(len(audio_bytes) - data_start, 0)
+    if declared_data_size == 0xFFFFFFFF or data_start + declared_data_size > len(audio_bytes):
+        data_size = available_data_size
+    else:
+        data_size = declared_data_size
+    duration_ms = round(data_size / byte_rate * 1000)
     return sample_rate, channels, duration_ms
+
+
+def _parse_wav_chunks(audio_bytes: bytes) -> tuple[int, int, int, int, int]:
+    if len(audio_bytes) < 12 or audio_bytes[:4] != b"RIFF" or audio_bytes[8:12] != b"WAVE":
+        raise ValueError("Expected RIFF/WAVE audio bytes")
+
+    sample_rate: int | None = None
+    channels: int | None = None
+    byte_rate: int | None = None
+    data_start: int | None = None
+    data_size: int | None = None
+    offset = 12
+
+    while offset + 8 <= len(audio_bytes):
+        chunk_id = audio_bytes[offset : offset + 4]
+        chunk_size = struct.unpack_from("<I", audio_bytes, offset + 4)[0]
+        payload_start = offset + 8
+
+        if chunk_id == b"fmt ":
+            if payload_start + 16 > len(audio_bytes):
+                raise ValueError("WAV fmt chunk is truncated")
+            channels = struct.unpack_from("<H", audio_bytes, payload_start + 2)[0]
+            sample_rate = struct.unpack_from("<I", audio_bytes, payload_start + 4)[0]
+            byte_rate = struct.unpack_from("<I", audio_bytes, payload_start + 8)[0]
+            if channels < 1 or sample_rate < 1 or byte_rate < 1:
+                raise ValueError("WAV fmt chunk has invalid audio parameters")
+        elif chunk_id == b"data":
+            data_start = payload_start
+            data_size = chunk_size
+            break
+
+        next_offset = payload_start + chunk_size + (chunk_size % 2)
+        if next_offset <= offset:
+            raise ValueError("WAV chunk parser did not advance")
+        offset = next_offset
+
+    if sample_rate is None or channels is None or byte_rate is None:
+        raise ValueError("WAV bytes are missing a fmt chunk")
+    if data_start is None or data_size is None:
+        raise ValueError("WAV bytes are missing a data chunk")
+    return sample_rate, channels, byte_rate, data_start, data_size
 
 
 def _normalize_row(row: dict[str, object]) -> dict[str, object]:

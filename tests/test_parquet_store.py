@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import io
+import struct
 import tempfile
 import unittest
 import wave
 from pathlib import Path
 
-from wakewords.parquet_store import CustomWordStore, build_generated_row
+from wakewords.parquet_store import CustomWordStore, build_generated_row, probe_wav_bytes
 
 
 class CustomWordStoreTests(unittest.TestCase):
@@ -77,6 +78,36 @@ class CustomWordStoreTests(unittest.TestCase):
 
             self.assertEqual(store.voice_code(provider="cr", voice_id="voice-123"), "cr1")
             self.assertEqual(store.voice_code(provider="cr", voice_id="voice-456"), "cr2")
+
+    def test_probe_wav_bytes_uses_actual_data_payload_for_placeholder_sizes(self) -> None:
+        wav_bytes = _wav_bytes(duration_ms=250)
+        data_offset = wav_bytes.index(b"data")
+        riff_size_offset = 4
+        data_size_offset = data_offset + 4
+        wav_bytes = (
+            wav_bytes[:riff_size_offset]
+            + struct.pack("<I", 0xFFFFFFFF)
+            + wav_bytes[riff_size_offset + 4 : data_size_offset]
+            + struct.pack("<I", 0xFFFFFFFF)
+            + wav_bytes[data_size_offset + 4 :]
+        )
+
+        sample_rate, channels, duration_ms = probe_wav_bytes(wav_bytes)
+
+        self.assertEqual(sample_rate, 16000)
+        self.assertEqual(channels, 1)
+        self.assertEqual(duration_ms, 250)
+
+    def test_probe_wav_bytes_uses_actual_data_payload_when_declared_size_exceeds_file(self) -> None:
+        wav_bytes = _wav_bytes(duration_ms=250)
+        data_size_offset = wav_bytes.index(b"data") + 4
+        wav_bytes = wav_bytes[:data_size_offset] + struct.pack("<I", 999_999) + wav_bytes[data_size_offset + 4 :]
+
+        sample_rate, channels, duration_ms = probe_wav_bytes(wav_bytes)
+
+        self.assertEqual(sample_rate, 16000)
+        self.assertEqual(channels, 1)
+        self.assertEqual(duration_ms, 250)
 
 
 def _wav_bytes(*, duration_ms: int = 250) -> bytes:
