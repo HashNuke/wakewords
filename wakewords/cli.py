@@ -11,6 +11,7 @@ from pathlib import Path
 import fire
 
 from wakewords.augment import augment_dataset
+from wakewords.check import check_dataset
 from wakewords.clean import clean_dataset
 from wakewords.dataset_manifest import build_split_manifests
 from wakewords.download import download_datasets
@@ -175,6 +176,28 @@ class DataTools:
         for output in outputs:
             print(output)
 
+    def check(
+        self,
+        project_dir: str = ".",
+        data_dir: str = "data",
+        all: bool = False,
+        generated: bool = False,
+        augmented: bool = False,
+        verbose: bool = False,
+    ) -> None:
+        """Print dataset sanity-check stats and write no-speech sample IDs."""
+        _configure_logging(verbose=verbose)
+        stats = check_dataset(
+            project_dir=Path(project_dir),
+            data_dir=Path(data_dir),
+            all=all,
+            generated=generated,
+            augmented=augmented,
+        )
+
+        for line in stats.lines():
+            print(line)
+
     def download(
         self,
         downloads_dir: str | None = None,
@@ -266,6 +289,29 @@ class DataTools:
 
         for output in bundle.paths():
             print(output)
+
+    def serve(
+        self,
+        project_dir: str = ".",
+        runs_dir: str = "runs",
+        output_dir: str = "models",
+        host: str = "127.0.0.1",
+        port: int = 8000,
+        open_browser: bool = True,
+        verbose: bool = False,
+    ) -> None:
+        """Export the latest model to ONNX and start the local playground server."""
+        _configure_logging(verbose=verbose)
+        from wakewords.server import serve_playground
+
+        serve_playground(
+            project_dir=Path(project_dir),
+            runs_dir=Path(runs_dir),
+            output_dir=Path(output_dir),
+            host=host,
+            port=port,
+            open_browser=open_browser,
+        )
 
 
 def _load_generate_prompts(*, config_path: Path) -> list[GenerationPrompt]:
@@ -398,6 +444,7 @@ def _normalize_cli_flags() -> None:
         "--model-path": "--model_path",
         "--checkpoint-path": "--checkpoint_path",
         "--output-dir": "--output_dir",
+        "--open-browser": "--open_browser",
     }
     sys.argv = [_normalize_flag(arg, flag_aliases) for arg in sys.argv]
 

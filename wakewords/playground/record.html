@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>wakewords record</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/">wakewords</a>
+        <nav class="nav" aria-label="playground">
+          <a href="/">test</a>
+          <a href="/record" aria-current="page">record</a>
+        </nav>
+      </header>
+
+      <section class="controls">
+        <button id="enableMic" type="button">Enable mic</button>
+        <select id="labelSelect" aria-label="label"></select>
+        <div id="status" class="status">idle</div>
+      </section>
+
+      <section id="recordPanel" class="panel">
+        <div class="hint">Hold Z to record.</div>
+        <div class="meter">
+          <div id="readout" class="readout">waiting</div>
+          <div id="probability" class="hint"></div>
+        </div>
+      </section>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+    <script type="module" src="/static/record.js"></script>
+  </body>
+</html>

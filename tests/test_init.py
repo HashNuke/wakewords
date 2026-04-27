@@ -78,7 +78,7 @@ class InitProjectTests(unittest.TestCase):
             )
             self.assertEqual(
                 (project_dir / ".gitignore").read_text(encoding="utf-8"),
-                "google-speech-commands/\n",
+                "google-speech-commands/\ndiagnostics/\n",
             )
 
     def test_init_project_refuses_to_overwrite_config(self) -> None:

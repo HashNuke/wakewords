@@ -65,6 +65,11 @@ def trim_wav_to_speech(
     )
 
 
+def wav_has_speech(audio_bytes: bytes) -> bool:
+    wav_data = _read_pcm16_mono_wav(audio_bytes)
+    return bool(_speech_timestamps(wav_data.samples, sample_rate=wav_data.sample_rate))
+
+
 class _WavData:
     def __init__(self, *, samples: list[int], sample_rate: int, sample_width: int) -> None:
         self.samples = samples

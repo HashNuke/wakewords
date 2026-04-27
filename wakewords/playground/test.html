@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>wakewords test</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/">wakewords</a>
+        <nav class="nav" aria-label="playground">
+          <a href="/" aria-current="page">test</a>
+          <a href="/record">record</a>
+        </nav>
+      </header>
+
+      <section class="controls">
+        <button id="enableMic" type="button">Enable mic</button>
+        <div id="status" class="status">idle</div>
+      </section>
+
+      <section id="labelGrid" class="grid" aria-live="polite"></section>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+    <script type="module" src="/static/test.js"></script>
+  </body>
+</html>

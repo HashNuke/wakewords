@@ -204,6 +204,27 @@ Cleaning removes matching rows from `data/custom_words.parquet`, deletes any
 materialized `data/custom-words/<label>/<sample-id>.wav` files, and deletes
 split manifests so they can be regenerated with `wakewords manifest`.
 
+## Data Checks
+
+Run a sanity check over generated and augmented custom-word rows:
+
+```sh
+uv run wakewords check
+```
+
+The check command reads `data/custom_words.parquet`, prints the sample count,
+median duration, longest duration, longest sample ID, and no-speech count, then
+writes the no-speech sample IDs to `no-speech.txt` in the project root.
+
+Check only generated or augmented rows:
+
+```sh
+uv run wakewords check --generated
+uv run wakewords check --augmented
+```
+
+`--all` is the default and includes both generated and augmented rows.
+
 ## Training
 
 Build split manifests first:

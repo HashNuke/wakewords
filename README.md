@@ -47,6 +47,17 @@ uv run wakewords augment
 
 By default, augmentation targets about `4000` total samples per word.
 
+### Check Data
+
+Print duration and no-speech stats for generated and augmented rows:
+
+```sh
+uv run wakewords check
+```
+
+Use `--generated` or `--augmented` to check only one source type. No-speech
+sample IDs are written to `no-speech.txt` in the project root.
+
 ### Train
 
 Download Google Speech Commands, build manifests, and preview the training run:

@@ -80,6 +80,7 @@ def init_project(project_dir: Path) -> list[Path]:
         encoding="utf-8",
     )
     _ensure_gitignore_entry(gitignore_path, "google-speech-commands/")
+    _ensure_gitignore_entry(gitignore_path, "diagnostics/")
 
     return [data_dir, background_audio_dir, config_path, gitignore_path]
 

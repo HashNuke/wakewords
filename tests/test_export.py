@@ -106,6 +106,32 @@ class ExportTests(unittest.TestCase):
                 ],
             )
 
+    def test_cli_serve_starts_playground(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            argv = [
+                "wakewords",
+                "serve",
+                "--project-dir",
+                tmp_dir,
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "9000",
+                "--open-browser",
+                "False",
+            ]
+
+            with mock.patch.object(cli.sys, "argv", argv):
+                with mock.patch("wakewords.server.serve_playground") as serve_playground:
+                    cli.main()
+
+            self.assertEqual(serve_playground.call_args.kwargs["project_dir"], Path(tmp_dir))
+            self.assertEqual(serve_playground.call_args.kwargs["runs_dir"], Path("runs"))
+            self.assertEqual(serve_playground.call_args.kwargs["output_dir"], Path("models"))
+            self.assertEqual(serve_playground.call_args.kwargs["host"], "0.0.0.0")
+            self.assertEqual(serve_playground.call_args.kwargs["port"], 9000)
+            self.assertFalse(serve_playground.call_args.kwargs["open_browser"])
+
 
 def _create_run(project_dir: Path, run_name: str) -> Path:
     run_dir = project_dir / "runs" / run_name
