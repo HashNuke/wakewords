@@ -44,6 +44,12 @@ GOOGLE_SPEECH_COMMANDS = [
     "visual",
 ]
 
+CUSTOM_WORDS_SAMPLE = [
+    {"tts_input": "Astra", "label": "astra"},
+    {"tts_input": "Boston", "label": "boston"},
+    {"tts_input": "Tokyo", "label": "tokyo"}
+]
+
 
 def init_project(project_dir: Path) -> list[Path]:
     data_dir = project_dir / "data"
@@ -66,7 +72,7 @@ def init_project(project_dir: Path) -> list[Path]:
         raise FileExistsError(f"Refusing to overwrite existing config: {config_path}")
 
     config = {
-        "custom_words": ["dexa"],
+        "custom_words": CUSTOM_WORDS_SAMPLE,
         "google_speech_commands": GOOGLE_SPEECH_COMMANDS,
     }
     config_path.write_text(

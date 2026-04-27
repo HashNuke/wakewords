@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 from wakewords import cli
-from wakewords.project import GOOGLE_SPEECH_COMMANDS, init_project
+from wakewords.project import CUSTOM_WORDS_SAMPLE, GOOGLE_SPEECH_COMMANDS, init_project
 
 
 class InitProjectTests(unittest.TestCase):
@@ -62,13 +62,13 @@ class InitProjectTests(unittest.TestCase):
 
             config_text = (project_dir / "config.json").read_text(encoding="utf-8")
             config = json.loads(config_text)
-            self.assertEqual(config["custom_words"], ["dexa"])
+            self.assertEqual(config["custom_words"], CUSTOM_WORDS_SAMPLE)
             self.assertEqual(config["google_speech_commands"], GOOGLE_SPEECH_COMMANDS)
             self.assertEqual(
                 config_text,
                 json.dumps(
                     {
-                        "custom_words": ["dexa"],
+                        "custom_words": CUSTOM_WORDS_SAMPLE,
                         "google_speech_commands": GOOGLE_SPEECH_COMMANDS,
                     },
                     indent=2,
