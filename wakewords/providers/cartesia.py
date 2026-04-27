@@ -9,6 +9,7 @@ from pathlib import Path
 
 from cartesia import Cartesia
 
+from wakewords.audio import trim_wav_to_speech
 from wakewords.parquet_store import CustomWordStore, build_generated_row
 from wakewords.providers.base import Voice
 
@@ -173,6 +174,7 @@ class CartesiaProvider:
                 **generate_kwargs,
             )
             audio_bytes = response.read()
+            audio_bytes = trim_wav_to_speech(audio_bytes)
 
         store.upsert(
             build_generated_row(

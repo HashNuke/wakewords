@@ -10,6 +10,7 @@ dependencies = [
     "nemo-toolkit[asr]>=2.3.0; sys_platform != 'darwin'",
     "pyarrow>=21.0.0",
     "requests>=2.33.1",
+    "silero-vad>=6.2.1",
     "tensorboard>=2.20.0",
     "tqdm>=4.67.3",
 ]
