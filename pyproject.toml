@@ -12,6 +12,8 @@ dependencies = [
     "requests>=2.33.1",
     "silero-vad>=6.2.1",
     "tensorboard>=2.20.0",
+    "torch==2.9.1; sys_platform != 'darwin'",
+    "torchaudio==2.9.1; sys_platform != 'darwin'",
     "tqdm>=4.67.3",
 ]
 

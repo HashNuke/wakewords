@@ -202,8 +202,8 @@ def _run_nemo_training(
         num_workers=num_workers,
         shuffle=False,
     )
-    model.setup_training_data(train_data_config=train_data_config)
-    model.setup_validation_data(val_data_config=validation_data_config)
+    model.setup_training_data(train_data_config)
+    model.setup_validation_data(validation_data_config)
 
     callbacks = [
         ModelCheckpoint(
