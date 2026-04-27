@@ -1,6 +1,6 @@
 [project]
 name = "wakewords"
-version = "0.2.4"
+version = "0.3.0"
 description = "Tools for building wake-word and speech-command datasets and models."
 readme = "README.md"
 requires-python = ">=3.13"
