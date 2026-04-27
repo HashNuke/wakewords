@@ -9,9 +9,10 @@ from pathlib import Path
 from unittest import mock
 
 from wakewords.cli import DataTools
+from wakewords.generate import build_tasks, generate_audio, select_voices
 from wakewords.parquet_store import CustomWordStore
-from wakewords.providers.base import GeneratedAudioContext, GenerationPrompt, Voice, prepare_generated_audio
-from wakewords.providers.cartesia import CartesiaProvider, _build_tasks
+from wakewords.providers.base import GeneratedAudioContext, GenerationPrompt, Voice, VoiceSelectionConfig, prepare_generated_audio
+from wakewords.providers.cartesia import CartesiaProvider, _cartesia_gender, _generic_gender
 
 
 class GenerateVoiceSelectionTests(unittest.TestCase):
@@ -19,8 +20,10 @@ class GenerateVoiceSelectionTests(unittest.TestCase):
         provider = CartesiaProvider()
         calls = []
 
-        def list_voices(*, pages: int = 1, all: bool = False, lang: str | None = None) -> list[Voice]:
-            calls.append({"pages": pages, "all": all, "lang": lang})
+        def list_voices(
+            *, pages: int = 1, all: bool = False, lang: str | None = None, gender: str | None = None
+        ) -> list[Voice]:
+            calls.append({"pages": pages, "all": all, "lang": lang, "gender": gender})
             return [
                 Voice(id="v1", name="Voice 1", language=lang),
                 Voice(id="v2", name="Voice 2", language=lang),
@@ -29,16 +32,76 @@ class GenerateVoiceSelectionTests(unittest.TestCase):
 
         provider.list_voices = list_voices  # type: ignore[method-assign]
 
-        selected = provider._select_voices(voice=None, voices=2, all_voices=False, lang="en")
+        selected = select_voices(provider=provider, voice=None, voices=2, all_voices=False, lang="en")
 
         self.assertEqual([voice.id for voice in selected], ["v1", "v2"])
-        self.assertEqual(calls, [{"pages": 1, "all": False, "lang": "en"}])
+        self.assertEqual(calls, [{"pages": 1, "all": False, "lang": "en", "gender": None}])
 
     def test_select_voices_rejects_specific_voice_with_limit(self) -> None:
         provider = CartesiaProvider()
 
         with self.assertRaises(ValueError):
-            provider._select_voices(voice="v1", voices=2, all_voices=False, lang=None)
+            select_voices(provider=provider, voice="v1", voices=2, all_voices=False, lang=None)
+
+    def test_select_grouped_voices_picks_limit_per_gender_for_all_languages(self) -> None:
+        provider = CartesiaProvider()
+        calls = []
+
+        def list_voices(
+            *, pages: int = 1, all: bool = False, lang: str | None = None, gender: str | None = None
+        ) -> list[Voice]:
+            calls.append({"pages": pages, "all": all, "lang": lang, "gender": gender})
+            voices = [
+                Voice(id="en-m-1", language="en", gender="masculine"),
+                Voice(id="en-m-2", language="en", gender="masculine"),
+                Voice(id="en-m-3", language="en", gender="masculine"),
+                Voice(id="en-f-1", language="en", gender="feminine"),
+                Voice(id="en-f-2", language="en", gender="feminine"),
+                Voice(id="es-m-1", language="es", gender="masculine"),
+                Voice(id="es-m-2", language="es", gender="masculine"),
+                Voice(id="es-f-1", language="es", gender="feminine"),
+                Voice(id="es-x-1", language="es", gender="nonbinary"),
+                Voice(id="missing-gender", language="es"),
+            ]
+            if gender:
+                voices = [voice for voice in voices if voice.gender == gender]
+            return voices
+
+        provider.list_voices = list_voices  # type: ignore[method-assign]
+
+        selected = select_voices(
+            provider=provider,
+            voice=None,
+            voices=None,
+            all_voices=False,
+            lang=None,
+            voice_selection=VoiceSelectionConfig(
+                group_by=("language", "gender"),
+                languages="all",
+                genders=("masculine", "feminine"),
+                limit_per_group=2,
+            ),
+        )
+
+        self.assertEqual(
+            [voice.id for voice in selected],
+            ["en-m-1", "en-m-2", "en-f-1", "en-f-2", "es-m-1", "es-m-2", "es-f-1"],
+        )
+        self.assertEqual(
+            calls,
+            [
+                {"pages": 1, "all": True, "lang": None, "gender": "masculine"},
+                {"pages": 1, "all": True, "lang": None, "gender": "feminine"},
+            ],
+        )
+
+    def test_cartesia_gender_mapping_uses_sdk_values(self) -> None:
+        self.assertEqual(_cartesia_gender("masculine"), "masculine")
+        self.assertEqual(_cartesia_gender("feminine"), "feminine")
+        self.assertEqual(_cartesia_gender("neutral"), "gender_neutral")
+        self.assertEqual(_generic_gender("masculine"), "masculine")
+        self.assertEqual(_generic_gender("feminine"), "feminine")
+        self.assertEqual(_generic_gender("gender_neutral"), "neutral")
 
 
 class GenerateCommandTests(unittest.TestCase):
@@ -51,16 +114,18 @@ class GenerateCommandTests(unittest.TestCase):
             )
             provider = _FakeProvider()
 
-            with mock.patch("wakewords.cli.get_provider", return_value=provider) as get_provider:
+            with (
+                mock.patch("wakewords.cli.get_provider", return_value=provider) as get_provider,
+                mock.patch("wakewords.cli.generate_audio", return_value=[]) as generate_audio_mock,
+            ):
                 DataTools().generate(project_dir=str(project_dir))
 
             get_provider.assert_called_once_with("cartesia", config_path=project_dir / "config.json")
             self.assertEqual(
-                provider.prompts,
+                generate_audio_mock.call_args.kwargs["prompts"],
                 [GenerationPrompt(tts_input="dexa", label="dexa"), GenerationPrompt(tts_input="tincan", label="tincan")],
             )
-            self.assertEqual(provider.data_dir, project_dir / "data")
-            self.assertEqual(provider.parquet_path, project_dir / "data" / "custom_words.parquet")
+            self.assertEqual(generate_audio_mock.call_args.kwargs["parquet_path"], project_dir / "data" / "custom_words.parquet")
 
     def test_generate_reads_object_custom_words_from_project_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -71,10 +136,13 @@ class GenerateCommandTests(unittest.TestCase):
             )
             provider = _FakeProvider()
 
-            with mock.patch("wakewords.cli.get_provider", return_value=provider):
+            with (
+                mock.patch("wakewords.cli.get_provider", return_value=provider),
+                mock.patch("wakewords.cli.generate_audio", return_value=[]) as generate_audio_mock,
+            ):
                 DataTools().generate(project_dir=str(project_dir))
 
-            self.assertEqual(provider.prompts, [GenerationPrompt(tts_input="Hey Astra", label="astra")])
+            self.assertEqual(generate_audio_mock.call_args.kwargs["prompts"], [GenerationPrompt(tts_input="Hey Astra", label="astra")])
 
     def test_generate_text_overrides_project_config_words(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -85,10 +153,13 @@ class GenerateCommandTests(unittest.TestCase):
             )
             provider = _FakeProvider()
 
-            with mock.patch("wakewords.cli.get_provider", return_value=provider):
+            with (
+                mock.patch("wakewords.cli.get_provider", return_value=provider),
+                mock.patch("wakewords.cli.generate_audio", return_value=[]) as generate_audio_mock,
+            ):
                 DataTools().generate(project_dir=str(project_dir), text="single")
 
-            self.assertEqual(provider.prompts, [GenerationPrompt(tts_input="single", label="single")])
+            self.assertEqual(generate_audio_mock.call_args.kwargs["prompts"], [GenerationPrompt(tts_input="single", label="single")])
 
     def test_generate_rejects_empty_custom_words(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -98,10 +169,48 @@ class GenerateCommandTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "custom_words"):
                 DataTools().generate(project_dir=str(project_dir))
 
+    def test_generate_reads_voice_selection_from_project_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            (project_dir / "config.json").write_text(
+                json.dumps(
+                    {
+                        "custom_words": [{"tts_input": "Hey Astra", "label": "astra"}],
+                        "generate": {
+                            "voice_selection": {
+                                "group_by": ["language", "gender"],
+                                "languages": "all",
+                                "genders": ["masculine", "feminine"],
+                                "limit_per_group": 3,
+                            }
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            provider = _FakeProvider()
+
+            with (
+                mock.patch("wakewords.cli.get_provider", return_value=provider),
+                mock.patch("wakewords.cli.generate_audio", return_value=[]) as generate_audio_mock,
+            ):
+                DataTools().generate(project_dir=str(project_dir))
+
+            self.assertEqual(
+                generate_audio_mock.call_args.kwargs["voice_selection"],
+                VoiceSelectionConfig(
+                    group_by=("language", "gender"),
+                    languages="all",
+                    genders=("masculine", "feminine"),
+                    limit_per_group=3,
+                ),
+            )
+
     def test_build_tasks_deduplicates_prompt_collisions(self) -> None:
         voice = Voice(id="voice-1", name="Voice 1", language="en")
 
-        tasks = _build_tasks(
+        tasks = build_tasks(
             prompts=[
                 GenerationPrompt(tts_input="Hey Astra", label="astra"),
                 GenerationPrompt(tts_input="Astra", label="astra"),
@@ -127,16 +236,17 @@ class GenerateCommandTests(unittest.TestCase):
 
             with (
                 mock.patch("wakewords.providers.cartesia._client", return_value=client),
-                mock.patch("wakewords.providers.cartesia.prepare_generated_audio", side_effect=lambda audio_bytes, *, context: audio_bytes),
+                mock.patch("wakewords.generate.prepare_generated_audio", side_effect=lambda audio_bytes, *, context: audio_bytes),
             ):
-                outputs = provider.generate(
+                outputs = generate_audio(
+                    provider=provider,
                     prompts=[GenerationPrompt(tts_input="Hey Astra", label="astra")],
-                    data_dir=data_dir,
                     parquet_path=data_dir / "custom_words.parquet",
                     voice=None,
                     voices=None,
                     all_voices=False,
                     lang=None,
+                    voice_selection=None,
                     concurrency=1,
                     model_id="sonic-3",
                     sample_rate=16000,
@@ -165,16 +275,17 @@ class GenerateCommandTests(unittest.TestCase):
 
             with (
                 mock.patch("wakewords.providers.cartesia._client", return_value=_FakeCartesiaClient()),
-                mock.patch("wakewords.providers.cartesia.prepare_generated_audio", return_value=None),
+                mock.patch("wakewords.generate.prepare_generated_audio", return_value=None),
             ):
-                outputs = provider.generate(
+                outputs = generate_audio(
+                    provider=provider,
                     prompts=[GenerationPrompt(tts_input="Hey Astra", label="astra")],
-                    data_dir=data_dir,
                     parquet_path=data_dir / "custom_words.parquet",
                     voice=None,
                     voices=None,
                     all_voices=False,
                     lang=None,
+                    voice_selection=None,
                     concurrency=1,
                     model_id="sonic-3",
                     sample_rate=16000,
@@ -209,16 +320,13 @@ class GenerateCommandTests(unittest.TestCase):
 
 
 class _FakeProvider:
-    def __init__(self) -> None:
-        self.prompts: list[GenerationPrompt] = []
-        self.data_dir: Path | None = None
-        self.parquet_path: Path | None = None
+    name = "fake"
 
-    def generate(self, **kwargs: object) -> list[Path]:
-        self.prompts = list(kwargs["prompts"])
-        self.data_dir = kwargs["data_dir"]
-        self.parquet_path = kwargs["parquet_path"]
-        return []
+    def list_voices(self, **kwargs: object) -> list[Voice]:
+        return [Voice(id="voice-1", name="Voice 1", language="en")]
+
+    def generate(self, **kwargs: object) -> bytes:
+        return _wav_bytes()
 
 
 class _FakeCartesiaClient:

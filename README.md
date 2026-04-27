@@ -34,7 +34,8 @@ Generate clean samples for the `custom_words` in the project `config.json` using
 uv run wakewords generate --lang en --all-voices
 ```
 
-Generated files are written under the project's `data/<word>/`.
+Generated audio and metadata are written to the project's
+`data/custom_words.parquet`.
 
 ### Augment The Dataset
 

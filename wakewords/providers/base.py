@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 from wakewords.audio import trim_wav_to_speech
 
@@ -15,6 +14,15 @@ class Voice:
     id: str
     name: str | None = None
     language: str | None = None
+    gender: str | None = None
+
+
+@dataclass(frozen=True)
+class VoiceSelectionConfig:
+    group_by: tuple[Literal["language", "gender"], Literal["language", "gender"]]
+    languages: tuple[str, ...] | Literal["all"]
+    genders: tuple[str, ...]
+    limit_per_group: int
 
 
 @dataclass(frozen=True)
@@ -56,23 +64,18 @@ class TTSProvider(Protocol):
         pages: int = 1,
         all: bool = False,
         lang: str | None = None,
+        gender: str | None = None,
     ) -> list[Voice]:
         ...
 
     def generate(
         self,
         *,
-        prompts: list[GenerationPrompt],
-        data_dir: Path,
-        parquet_path: Path,
-        voice: str | None,
-        voices: int | None,
-        all_voices: bool,
+        prompt: str,
+        voice: Voice,
         lang: str | None,
-        concurrency: int,
         model_id: str,
         sample_rate: int,
         encoding: str,
-        overwrite: bool,
-    ) -> list[Path]:
+    ) -> bytes:
         ...

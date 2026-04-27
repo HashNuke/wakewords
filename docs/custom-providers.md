@@ -10,7 +10,7 @@ Add a `providers` object to the project `config.json` created by
 
 ```json
 {
-  "custom_words": ["dexa"],
+  "custom_words": [{ "tts_input": "Dexa", "label": "dexa" }],
   "google_speech_commands": ["yes", "no"],
   "providers": {
     "my-provider": "my_project.providers:MyProvider"
@@ -43,8 +43,6 @@ package's `TTSProvider` protocol.
 Minimal example:
 
 ```python
-from pathlib import Path
-
 from wakewords.providers.base import Voice
 
 
@@ -56,32 +54,28 @@ class MyProvider:
         pages: int = 1,
         all: bool = False,
         lang: str | None = None,
+        gender: str | None = None,
     ) -> list[Voice]:
-        return [Voice(id="voice-1", name="Voice 1", language=lang)]
+        return [Voice(id="voice-1", name="Voice 1", language=lang, gender="feminine")]
 
     def generate(
         self,
         *,
-        prompts: list[str],
-        output_dir: Path,
-        voice: str | None,
-        voices: int | None,
-        all_voices: bool,
+        prompt: str,
+        voice: Voice,
         lang: str | None,
-        concurrency: int,
         model_id: str,
         sample_rate: int,
         encoding: str,
-        overwrite: bool,
-    ) -> list[Path]:
-        # Write one or more WAV files and return their paths.
-        return []
+    ) -> bytes:
+        # Return one generated WAV as bytes. The CLI handles selection,
+        # concurrency, VAD trimming, and Parquet writes.
+        return b"..."
 ```
 
-The built-in provider writes files under `data/<word>/`, records per-word
-`manifest.jsonl` files, and uses `wakewords.providers.base.Voice` for voice
-metadata. Custom providers should follow the same output conventions if their
-generated audio will be used by `wakewords augment` and `wakewords manifest`.
+The CLI writes generated audio and metadata to `data/custom_words.parquet` and
+uses `wakewords.providers.base.Voice` for voice metadata. Custom providers only
+need to list voices and return one generated WAV byte string per `generate` call.
 
 ## Import Requirements
 

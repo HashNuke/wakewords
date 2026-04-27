@@ -14,8 +14,9 @@ from wakewords.augment import augment_dataset
 from wakewords.clean import clean_dataset
 from wakewords.dataset_manifest import build_split_manifests
 from wakewords.download import download_datasets
+from wakewords.generate import generate_audio
 from wakewords.project import init_project
-from wakewords.providers.base import GenerationPrompt
+from wakewords.providers.base import GenerationPrompt, VoiceSelectionConfig
 from wakewords.providers import get_provider
 from wakewords.train import DEFAULT_MODEL_NAME, train_model
 
@@ -51,6 +52,8 @@ class DataTools:
             description = f"{voice.id}\t{voice.name or ''}".rstrip()
             if voice.language:
                 description = f"{description}\t{voice.language}"
+            if voice.gender:
+                description = f"{description}\t{voice.gender}"
             print(description)
 
     def generate(
@@ -79,16 +82,20 @@ class DataTools:
         prompts = [_prompt_from_text(text)] if text else _load_generate_prompts(config_path=config_path)
         if not prompts:
             raise ValueError("No text to generate. Provide --text or add custom_words to config.json.")
+        voice_selection = None
+        if not (voice or voices is not None or all_voices or lang):
+            voice_selection = _load_generate_voice_selection(config_path=config_path)
 
         tts = get_provider(provider, config_path=config_path)
-        outputs = tts.generate(
+        outputs = generate_audio(
+            provider=tts,
             prompts=prompts,
-            data_dir=project_path / "data",
             parquet_path=project_path / "data" / "custom_words.parquet",
             voice=voice,
             voices=voices,
             all_voices=all_voices,
             lang=lang,
+            voice_selection=voice_selection,
             concurrency=concurrency,
             model_id=model_id,
             sample_rate=sample_rate,
@@ -251,6 +258,47 @@ def _load_generate_prompts(*, config_path: Path) -> list[GenerationPrompt]:
         if isinstance(tts_input, str) and tts_input and isinstance(label, str) and label:
             prompts.append(GenerationPrompt(tts_input=tts_input, label=label))
     return prompts
+
+
+def _load_generate_voice_selection(*, config_path: Path) -> VoiceSelectionConfig | None:
+    if not config_path.exists():
+        return None
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    generate_config = config.get("generate")
+    if not isinstance(generate_config, dict):
+        return None
+    voice_selection = generate_config.get("voice_selection")
+    if voice_selection is None:
+        return None
+    if not isinstance(voice_selection, dict):
+        raise ValueError("generate.voice_selection must be an object")
+
+    group_by = voice_selection.get("group_by")
+    if group_by != ["language", "gender"] and group_by != ["gender", "language"]:
+        raise ValueError('generate.voice_selection.group_by must be ["language", "gender"]')
+
+    languages = voice_selection.get("languages")
+    if languages == "all" or languages == ["all"]:
+        parsed_languages: tuple[str, ...] | str = "all"
+    elif isinstance(languages, list) and languages and all(isinstance(language, str) and language for language in languages):
+        parsed_languages = tuple(languages)
+    else:
+        raise ValueError('generate.voice_selection.languages must be "all" or a non-empty string list')
+
+    genders = voice_selection.get("genders", ["masculine", "feminine"])
+    if not isinstance(genders, list) or not genders or not all(isinstance(gender, str) and gender for gender in genders):
+        raise ValueError("generate.voice_selection.genders must be a non-empty string list")
+
+    limit_per_group = voice_selection.get("limit_per_group", voice_selection.get("voices_per_gender"))
+    if not isinstance(limit_per_group, int) or limit_per_group < 1:
+        raise ValueError("generate.voice_selection.limit_per_group must be >= 1")
+
+    return VoiceSelectionConfig(
+        group_by=(group_by[0], group_by[1]),
+        languages=parsed_languages,
+        genders=tuple(genders),
+        limit_per_group=limit_per_group,
+    )
 
 
 def _prompt_from_text(text: str) -> GenerationPrompt:

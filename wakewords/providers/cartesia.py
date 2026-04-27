@@ -2,15 +2,10 @@ from __future__ import annotations
 
 import logging
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
-from tqdm import tqdm
-from pathlib import Path
 
 from cartesia import Cartesia
 
-from wakewords.parquet_store import CustomWordStore, build_generated_row
-from wakewords.providers.base import GeneratedAudioContext, GenerationPrompt, Voice, prepare_generated_audio
+from wakewords.providers.base import Voice
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +19,12 @@ class CartesiaProvider:
         pages: int = 1,
         all: bool = False,
         lang: str | None = None,
+        gender: str | None = None,
     ) -> list[Voice]:
         with _client() as client:
             list_kwargs = {"limit": 100}
+            if gender:
+                list_kwargs["gender"] = _cartesia_gender(gender)
             if lang:
                 list_kwargs["extra_query"] = {"language": lang}
 
@@ -57,102 +55,13 @@ class CartesiaProvider:
     def generate(
         self,
         *,
-        prompts: list[GenerationPrompt],
-        data_dir: Path,
-        parquet_path: Path,
-        voice: str | None,
-        voices: int | None,
-        all_voices: bool,
-        lang: str | None,
-        concurrency: int,
-        model_id: str,
-        sample_rate: int,
-        encoding: str,
-        overwrite: bool,
-    ) -> list[Path]:
-        voices = self._select_voices(voice=voice, voices=voices, all_voices=all_voices, lang=lang)
-        store = CustomWordStore(parquet_path)
-        voice_codes = {
-            selected_voice.id: store.voice_code(provider=self.short_code, voice_id=selected_voice.id)
-            for selected_voice in voices
-        }
-        tasks = _build_tasks(prompts=prompts, voices=voices, voice_codes=voice_codes, provider=self.short_code)
-
-        wrote_rows = False
-
-        with ThreadPoolExecutor(max_workers=concurrency) as executor:
-            futures = [
-                executor.submit(
-                    self._generate_one,
-                    task=task,
-                    store=store,
-                    lang=lang,
-                    model_id=model_id,
-                    sample_rate=sample_rate,
-                    encoding=encoding,
-                    overwrite=overwrite,
-                )
-                for task in tasks
-            ]
-
-            with tqdm(total=len(futures), unit="sample") as bar:
-                for future in as_completed(futures):
-                    wrote_rows = future.result() or wrote_rows
-                    bar.update(1)
-
-        return [parquet_path] if wrote_rows else []
-
-    def _select_voices(
-        self,
-        *,
-        voice: str | None,
-        voices: int | None,
-        all_voices: bool,
-        lang: str | None,
-    ) -> list[Voice]:
-        if voices is not None and voices < 1:
-            raise ValueError("voices must be >= 1")
-        if voice and voices is not None:
-            raise ValueError("Use --voice for one specific voice or --voices to limit selected voices, not both.")
-
-        if all_voices:
-            selected_voices = self.list_voices(all=True, lang=lang)
-            if not selected_voices:
-                raise RuntimeError("Cartesia returned no voices.")
-            return selected_voices[:voices]
-
-        if voice:
-            selected_voices = self.list_voices(all=True, lang=lang)
-            if not selected_voices:
-                raise RuntimeError("Cartesia returned no voices.")
-            normalized = voice.strip().lower()
-            for candidate in selected_voices:
-                if candidate.id.lower() == normalized:
-                    return [candidate]
-                if candidate.name and candidate.name.lower() == normalized:
-                    return [candidate]
-            raise ValueError(f"Could not find Cartesia voice by id or name: {voice}")
-
-        selected_voices = self.list_voices(pages=1, all=False, lang=lang)
-        if not selected_voices:
-            raise RuntimeError("Cartesia returned no voices.")
-        return selected_voices[: voices or 1]
-
-    def _generate_one(
-        self,
-        *,
-        task: "_GenerationTask",
-        store: CustomWordStore,
+        prompt: str,
+        voice: Voice,
         lang: str | None,
         model_id: str,
         sample_rate: int,
         encoding: str,
-        overwrite: bool,
-    ) -> bool:
-        existing = store.get_by_sample_id(task.sample_id)
-        if existing is not None and not overwrite:
-            return False
-
+    ) -> bytes:
         with _client() as client:
             generate_kwargs = {}
             if lang:
@@ -165,73 +74,14 @@ class CartesiaProvider:
                     "encoding": encoding,
                     "sample_rate": sample_rate,
                 },
-                transcript=task.prompt,
+                transcript=prompt,
                 voice={
                     "mode": "id",
-                    "id": task.voice.id,
+                    "id": voice.id,
                 },
                 **generate_kwargs,
             )
-            audio_bytes = response.read()
-            audio_bytes = prepare_generated_audio(
-                audio_bytes,
-                context=GeneratedAudioContext(
-                    prompt=task.prompt,
-                    label=task.word_slug,
-                    provider=self.short_code,
-                    voice_id=task.voice.id,
-                    voice_code=task.voice_code,
-                    sample_id=task.sample_id,
-                ),
-            )
-            if audio_bytes is None:
-                return False
-
-        store.upsert(
-            build_generated_row(
-                audio_bytes=audio_bytes,
-                label=task.word_slug,
-                voice_id=task.voice.id,
-                voice_code=task.voice_code,
-                provider=self.short_code,
-                lang=lang or task.voice.language,
-            ),
-            overwrite=overwrite,
-        )
-
-        return True
-
-
-class _GenerationTask:
-    def __init__(self, *, prompt: str, voice: Voice, voice_code: str, word_slug: str, sample_id: str) -> None:
-        self.prompt = prompt
-        self.voice = voice
-        self.voice_code = voice_code
-        self.word_slug = word_slug
-        self.sample_id = sample_id
-
-
-def _build_tasks(*, prompts: list[GenerationPrompt], voices: list[Voice], voice_codes: dict[str, str], provider: str) -> list[_GenerationTask]:
-    tasks: list[_GenerationTask] = []
-    seen: set[str] = set()
-    for selected_voice in voices:
-        voice_code = voice_codes[selected_voice.id]
-        for prompt in prompts:
-            word_slug = prompt.label
-            sample_id = _generated_sample_id(label=word_slug, provider=provider, voice_id=selected_voice.id)
-            if sample_id in seen:
-                continue
-            seen.add(sample_id)
-            tasks.append(
-                _GenerationTask(
-                    prompt=prompt.tts_input,
-                    voice=selected_voice,
-                    voice_code=voice_code,
-                    word_slug=word_slug,
-                    sample_id=sample_id,
-                )
-            )
-    return tasks
+            return response.read()
 
 
 def _voice_from_response(raw_voice: object) -> Voice:
@@ -239,6 +89,7 @@ def _voice_from_response(raw_voice: object) -> Voice:
         id=str(getattr(raw_voice, "id")),
         name=_optional_str(getattr(raw_voice, "name", None)),
         language=_optional_str(getattr(raw_voice, "language", None)),
+        gender=_generic_gender(_optional_str(getattr(raw_voice, "gender", None))),
     )
 
 
@@ -252,14 +103,29 @@ def _optional_str(value: object) -> str | None:
     return str(value)
 
 
+def _cartesia_gender(gender: str) -> str:
+    normalized = gender.strip().lower()
+    if normalized == "masculine":
+        return "masculine"
+    if normalized == "feminine":
+        return "feminine"
+    if normalized in {"neutral", "nonbinary", "non-binary", "gender_neutral"}:
+        return "gender_neutral"
+    raise ValueError(f"Unsupported Cartesia gender: {gender}")
+
+
+def _generic_gender(gender: str | None) -> str | None:
+    if gender is None:
+        return None
+    normalized = gender.strip().lower()
+    if normalized == "gender_neutral":
+        return "neutral"
+    return normalized
+
+
 def _slug(value: str) -> str:
     import re
 
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
     return slug or "untitled"
 
-
-def _generated_sample_id(*, label: str, provider: str, voice_id: str) -> str:
-    import hashlib
-
-    return hashlib.sha256(f"generated\0{label}\0{provider}\0{voice_id}".encode("utf-8")).hexdigest()

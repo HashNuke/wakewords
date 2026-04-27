@@ -87,6 +87,29 @@ Generate with every matching voice:
 uv run wakewords generate --lang en --all-voices
 ```
 
+Generate with a configured grouped voice selection policy:
+
+```json
+{
+  "custom_words": [
+    { "tts_input": "Astra", "label": "astra" },
+    { "tts_input": "Boston", "label": "boston" },
+    { "tts_input": "Tokyo", "label": "tokyo" }
+  ],
+  "generate": {
+    "voice_selection": {
+      "group_by": ["language", "gender"],
+      "languages": "all",
+      "genders": ["masculine", "feminine"],
+      "limit_per_group": 3
+    }
+  },
+  "google_speech_commands": ["yes", "no", "up"]
+}
+```
+
+`languages` can be `"all"` or a non-empty list such as `["en", "es"]`. `genders` uses voice presentation names such as `"masculine"` and `"feminine"`; each provider maps them to its own API values. CLI voice options like `--voice`, `--voices`, `--all-voices`, or `--lang` override `generate.voice_selection` for that run.
+
 Generate with the first five voices returned by the provider:
 
 ```sh
@@ -102,12 +125,12 @@ uv run wakewords generate --concurrency 4
 Custom TTS providers can be registered from `config.json`. See
 `docs/custom-providers.md`.
 
-By default, generated files are written under the project's `data/<word>/`. Each
-word directory also gets a `manifest.jsonl` file. Entries use the NeMo manifest
-shape with an extra `duration_ms` field:
+By default, generated clean audio and metadata are written to the project's
+`data/custom_words.parquet`. The Parquet rows include the WAV bytes, label,
+voice metadata, duration, sample rate, source type, and content hash.
 
 ```json
-{"audio_filepath": "astra-cr1-t100-clean-nonoise-nosnr.wav", "duration": 0.92, "duration_ms": 920, "label": "astra"}
+{"label": "astra", "voice_code": "cr1", "source_type": "generated", "duration_ms": 920}
 ```
 
 ## Dataset Downloads
@@ -157,12 +180,11 @@ increases. For `373` voices, this selects `5 tempos x 2 noises x 1 SNR = 10`
 augmented variants per voice, for about `4103` total samples including the clean
 originals.
 
-The augment command scans `data/<word>/` for clean files named like
-`astra-cr1-t100-clean-nonoise-nosnr.wav`, keeps the existing voice code, picks
-deterministic subsets of tempo, background noise, and SNR values for each voice,
-and writes derived files back into the same word directory. It reuses the clean
-source metadata from that word directory's `manifest.jsonl` and probes each
-augmented output separately before recording its final duration.
+The augment command reads clean generated rows from `data/custom_words.parquet`,
+keeps the existing voice metadata, picks deterministic subsets of tempo,
+background noise, and SNR values for each voice, and writes augmented rows back
+to the same Parquet file. Each augmented row stores the derived WAV bytes,
+parent sample ID, tempo, noise type, SNR, and probed duration.
 
 To change the target:
 
@@ -178,8 +200,9 @@ uv run wakewords clean --augmented
 uv run wakewords clean --all
 ```
 
-Cleaning removes stale entries from `data/<word>/manifest.jsonl` and deletes the
-root split manifests so they can be regenerated with `wakewords manifest`.
+Cleaning removes matching rows from `data/custom_words.parquet`, deletes any
+materialized `data/custom-words/<label>/<sample-id>.wav` files, and deletes
+split manifests so they can be regenerated with `wakewords manifest`.
 
 ## Training
 
@@ -195,9 +218,9 @@ To change split ratios:
 uv run wakewords manifest --train-ratio 70 --validate-ratio 20 --test-ratio 10
 ```
 
-This command reads `data/<word>/manifest.jsonl`, resolves local audio filenames
-to full paths, performs a deterministic per-label split, and writes project-root
-manifests:
+This command reads `data/custom_words.parquet`, materializes custom-word WAVs
+under `data/custom-words/<label>/`, performs a deterministic per-label split,
+and writes manifests under `data/manifests/`:
 
 - `train_manifest.jsonl`
 - `validation_manifest.jsonl`
