@@ -19,14 +19,14 @@ from tqdm import tqdm
 DEFAULT_TEMPOS = (0.85, 0.90, 0.95, 1.0, 1.05, 1.10, 1.15)
 DEFAULT_SNRS = (20, 10, 5)
 DEFAULT_TARGET_SAMPLES_PER_WORD = 4000
-_BASE_SUFFIX = "-t100-clean-nonoise-nosnr.wav"
 
 
 @dataclass(frozen=True)
 class SourceSample:
+    sample_id: str
     word: str
-    filename: str
-    voice_code: str
+    provider: str
+    voice_id: str
     duration: float
     duration_ms: int
     audio_bytes: bytes
@@ -49,13 +49,12 @@ class AugmentTask:
 
     @property
     def output_filename(self) -> str:
-        word_name = _filename_token(self.source.word)
         tempo_label = _tempo_label(self.tempo)
         if self.noise is None:
-            filename = f"{word_name}-{self.source.voice_code}-{tempo_label}-clean-nonoise-nosnr.wav"
+            filename = f"{self.source.sample_id}-{tempo_label}-clean-nonoise-nosnr.wav"
         else:
             noise_name = _filename_token(self.noise.path.stem)
-            filename = f"{word_name}-{self.source.voice_code}-{tempo_label}-{noise_name}-snr{self.snr:02d}.wav"
+            filename = f"{self.source.sample_id}-{tempo_label}-{noise_name}-snr{self.snr:02d}.wav"
         return filename
 
     @property
@@ -114,23 +113,22 @@ def _collect_sources(store: CustomWordStore) -> list[SourceSample]:
     for row in store.rows():
         if row.get("source_type") != "generated":
             continue
-        filename = row.get("filename")
+        sample_id = row.get("sample_id")
         label = row.get("label")
         audio_bytes = row.get("audio_bytes")
-        voice_code = row.get("voice_code")
+        provider = row.get("provider")
+        voice_id = row.get("voice_id")
         duration_ms = row.get("duration_ms")
-        if not isinstance(filename, str) or not isinstance(label, str):
+        if not isinstance(sample_id, str) or not isinstance(label, str):
             continue
-        if not isinstance(audio_bytes, bytes) or not isinstance(voice_code, str) or not isinstance(duration_ms, int):
-            continue
-        parsed = _parse_source_filename(filename)
-        if parsed is None:
+        if not isinstance(audio_bytes, bytes) or not isinstance(provider, str) or not isinstance(voice_id, str) or not isinstance(duration_ms, int):
             continue
         sources.append(
             SourceSample(
+                sample_id=sample_id,
                 word=label,
-                voice_code=voice_code,
-                filename=filename,
+                provider=provider,
+                voice_id=voice_id,
                 duration=duration_ms / 1000,
                 duration_ms=duration_ms,
                 audio_bytes=audio_bytes,
@@ -257,7 +255,7 @@ def _select_subset[T](values: tuple[T, ...], count: int, *, source: SourceSample
 
 
 def _selection_seed(*, source: SourceSample, category: str) -> int:
-    key = "|".join((source.word, source.voice_code, category))
+    key = "|".join((source.word, source.provider, source.voice_id, category))
     digest = hashlib.sha256(key.encode("utf-8")).digest()
     return int.from_bytes(digest[:8], "big")
 
@@ -280,7 +278,7 @@ def _run_task(*, task: AugmentTask, store: CustomWordStore, overwrite: bool) -> 
         else:
             duration = task.source.duration / task.tempo
             noise_temp_path = _extract_noise_segment(
-                source_key=f"{task.source.word}/{task.source.filename}",
+                source_key=f"{task.source.word}/{task.source.sample_id}",
                 noise=task.noise,
                 duration=duration,
                 tempo=task.tempo,
@@ -315,20 +313,6 @@ def _run_task(*, task: AugmentTask, store: CustomWordStore, overwrite: bool) -> 
             noise_temp_path.unlink(missing_ok=True)
         if output_temp_path is not None:
             output_temp_path.unlink(missing_ok=True)
-
-
-def _parse_source_filename(filename: str) -> tuple[str, str] | None:
-    if not filename.endswith(_BASE_SUFFIX):
-        return None
-    stem = filename[: -len(_BASE_SUFFIX)]
-    if "-" not in stem:
-        return None
-    word, voice_code = stem.rsplit("-", 1)
-    if not word or not voice_code:
-        return None
-    return word, voice_code
-
-
 def _tempo_adjust(source_path: Path, tempo: float) -> Path:
     temp_path = _new_temp_wav_path()
     _run_ffmpeg([

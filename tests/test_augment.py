@@ -43,9 +43,10 @@ class AugmentTests(unittest.TestCase):
 
     def test_build_tasks_uses_subset_combo_counts_per_voice(self) -> None:
         source = SourceSample(
+            sample_id="sample-yes-1",
             word="yes",
-            filename="yes-cr1-t100-clean-nonoise-nosnr.wav",
-            voice_code="cr1",
+            provider="cr",
+            voice_id="voice-1",
             duration=1.0,
             duration_ms=1000,
             audio_bytes=b"wav",
@@ -73,9 +74,10 @@ class AugmentTests(unittest.TestCase):
     def test_noisy_output_path_uses_single_environment_name_without_separators(self) -> None:
         task = AugmentTask(
             source=SourceSample(
+                sample_id="sample-hey-1",
                 word="hey-astra now",
-                filename="heyastranow-cr107-t100-clean-nonoise-nosnr.wav",
-                voice_code="cr107",
+                provider="cr",
+                voice_id="voice-107",
                 duration=1.0,
                 duration_ms=1000,
                 audio_bytes=b"wav",
@@ -86,27 +88,27 @@ class AugmentTests(unittest.TestCase):
             snr=10,
         )
 
-        self.assertEqual(task.output_path.name, "heyastranow-cr107-t095-doingthedishes-snr10.wav")
+        self.assertEqual(task.output_path.name, "sample-hey-1-t095-doingthedishes-snr10.wav")
 
     def test_collect_sources_keeps_directory_label_with_hyphens(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = CustomWordStore(Path(tmp_dir) / "custom_words.parquet")
-            store.upsert(
-                build_generated_row(
-                    audio_bytes=_wav_bytes(),
-                    filename="heyastranow-cr107-t100-clean-nonoise-nosnr.wav",
-                    label="hey-astra-now",
-                    voice_id="voice-107",
-                    voice_code="cr107",
-                    provider="cr",
-                    lang="en",
-                ),
-                overwrite=False,
+            row = build_generated_row(
+                audio_bytes=_wav_bytes(),
+                filename="heyastranow-cr107-t100-clean-nonoise-nosnr.wav",
+                label="hey-astra-now",
+                voice_id="voice-107",
+                voice_code="cr107",
+                provider="cr",
+                lang="en",
             )
+            store.upsert(row, overwrite=False)
 
             sources = _collect_sources(store)
 
         self.assertEqual([source.word for source in sources], ["hey-astra-now"])
+        self.assertEqual([source.sample_id for source in sources], [row["sample_id"]])
+        self.assertEqual([source.voice_id for source in sources], ["voice-107"])
 
     def test_augment_dataset_appends_parquet_rows_without_wav_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -152,9 +154,10 @@ class AugmentTests(unittest.TestCase):
             self.assertFalse((data_dir / "yes").exists())
             rows = CustomWordStore(data_dir / "custom_words.parquet").rows()
             self.assertEqual(sorted(row["source_type"] for row in rows), ["augmented", "generated"])
+            generated = next(row for row in rows if row["source_type"] == "generated")
             augmented = next(row for row in rows if row["source_type"] == "augmented")
             self.assertEqual(augmented["label"], "yes")
-            self.assertEqual(augmented["filename"], "yes-cr1-t100-rain-snr10.wav")
+            self.assertEqual(augmented["filename"], f"{generated['sample_id']}-t100-rain-snr10.wav")
             self.assertEqual(augmented["tempo"], 1.0)
             self.assertEqual(augmented["noise_type"], "rain")
             self.assertEqual(augmented["snr"], 10)
@@ -183,9 +186,10 @@ class AugmentTests(unittest.TestCase):
 
     def test_select_subset_shuffles_deterministically_per_voice_and_category(self) -> None:
         source = SourceSample(
+            sample_id="sample-yes-1",
             word="yes",
-            filename="yes-cr1-t100-clean-nonoise-nosnr.wav",
-            voice_code="cr1",
+            provider="cr",
+            voice_id="voice-1",
             duration=1.0,
             duration_ms=1000,
             audio_bytes=b"wav",
