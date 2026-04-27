@@ -89,7 +89,7 @@ class CheckTests(unittest.TestCase):
             self.assertEqual(stats.longest_sample_id, generated["sample_id"])
             has_speech.assert_called_once()
 
-    def test_cli_check_prints_stats(self) -> None:
+    def test_cli_checkdata_prints_stats(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_dir = Path(tmp_dir).resolve()
             data_dir = project_dir / "data"
@@ -104,7 +104,7 @@ class CheckTests(unittest.TestCase):
             )
             store.upsert(row, overwrite=False)
             stdout = io.StringIO()
-            argv = ["wakewords", "check", "--project-dir", tmp_dir, "--generated"]
+            argv = ["wakewords", "checkdata", "--project-dir", tmp_dir, "--generated"]
 
             with mock.patch.object(cli.sys, "argv", argv):
                 with mock.patch("wakewords.check.wav_has_speech", return_value=True):

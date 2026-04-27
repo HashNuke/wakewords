@@ -52,7 +52,7 @@ By default, augmentation targets about `4000` total samples per word.
 Print duration and no-speech stats for generated and augmented rows:
 
 ```sh
-uv run wakewords check
+uv run wakewords checkdata
 ```
 
 Use `--generated` or `--augmented` to check only one source type. No-speech

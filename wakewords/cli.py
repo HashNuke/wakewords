@@ -177,7 +177,7 @@ class DataTools:
         for output in outputs:
             print(output)
 
-    def check(
+    def checkdata(
         self,
         project_dir: str = ".",
         data_dir: str = "data",

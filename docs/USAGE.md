@@ -209,18 +209,18 @@ split manifests so they can be regenerated with `wakewords manifest`.
 Run a sanity check over generated and augmented custom-word rows:
 
 ```sh
-uv run wakewords check
+uv run wakewords checkdata
 ```
 
-The check command reads `data/custom_words.parquet`, prints the sample count,
+The checkdata command reads `data/custom_words.parquet`, prints the sample count,
 median duration, longest duration, longest sample ID, and no-speech count, then
 writes the no-speech sample IDs to `no-speech.txt` in the project root.
 
 Check only generated or augmented rows:
 
 ```sh
-uv run wakewords check --generated
-uv run wakewords check --augmented
+uv run wakewords checkdata --generated
+uv run wakewords checkdata --augmented
 ```
 
 `--all` is the default and includes both generated and augmented rows.
