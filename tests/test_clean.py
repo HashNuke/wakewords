@@ -12,7 +12,7 @@ from wakewords.parquet_store import CustomWordStore, build_augmented_row, build_
 
 
 class CleanTests(unittest.TestCase):
-    def test_clean_augmented_removes_only_augmented_files_and_stale_split_manifests(self) -> None:
+    def test_clean_ignores_legacy_word_directories(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_dir = Path(tmp_dir)
             word_dir = project_dir / "data" / "yes"
@@ -27,49 +27,12 @@ class CleanTests(unittest.TestCase):
 
             deleted = clean_dataset(data_dir=project_dir / "data", augmented=True)
 
-            self.assertEqual(deleted, [augmented_path, split_manifest])
+            self.assertEqual(deleted, [])
             self.assertTrue(clean_path.exists())
-            self.assertFalse(augmented_path.exists())
-            self.assertFalse(split_manifest.exists())
-            entries = _read_word_manifest(word_dir)
-            self.assertEqual([entry["audio_filepath"] for entry in entries], [clean_path.name])
-
-    def test_clean_generated_removes_only_clean_source_files(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            project_dir = Path(tmp_dir)
-            word_dir = project_dir / "data" / "yes"
-            word_dir.mkdir(parents=True)
-            clean_path = word_dir / "yes-cr1-t100-clean-nonoise-nosnr.wav"
-            augmented_path = word_dir / "yes-cr1-t095-rain-snr10.wav"
-            clean_path.write_bytes(b"clean")
-            augmented_path.write_bytes(b"augmented")
-            _write_word_manifest(word_dir, [clean_path.name, augmented_path.name])
-
-            deleted = clean_dataset(data_dir=project_dir / "data", generated=True)
-
-            self.assertEqual(deleted, [clean_path])
-            self.assertFalse(clean_path.exists())
             self.assertTrue(augmented_path.exists())
+            self.assertTrue(split_manifest.exists())
             entries = _read_word_manifest(word_dir)
-            self.assertEqual([entry["audio_filepath"] for entry in entries], [augmented_path.name])
-
-    def test_clean_all_removes_all_wavs_and_manifest(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            project_dir = Path(tmp_dir)
-            word_dir = project_dir / "data" / "yes"
-            word_dir.mkdir(parents=True)
-            clean_path = word_dir / "yes-cr1-t100-clean-nonoise-nosnr.wav"
-            augmented_path = word_dir / "yes-cr1-t095-rain-snr10.wav"
-            clean_path.write_bytes(b"clean")
-            augmented_path.write_bytes(b"augmented")
-            _write_word_manifest(word_dir, [clean_path.name, augmented_path.name])
-
-            deleted = clean_dataset(data_dir=project_dir / "data", all=True)
-
-            self.assertEqual(set(deleted), {clean_path, augmented_path})
-            self.assertFalse(clean_path.exists())
-            self.assertFalse(augmented_path.exists())
-            self.assertFalse((word_dir / "manifest.jsonl").exists())
+            self.assertEqual([entry["audio_filepath"] for entry in entries], [clean_path.name, augmented_path.name])
 
     def test_clean_requires_one_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -106,8 +69,9 @@ class CleanTests(unittest.TestCase):
 
             deleted = clean_dataset(data_dir=data_dir, generated=True)
 
-            self.assertEqual(deleted, [data_dir / "custom_words.parquet", clean_path, materialized_path])
+            self.assertEqual(deleted, [data_dir / "custom_words.parquet", materialized_path])
             self.assertEqual(CustomWordStore(data_dir / "custom_words.parquet").rows(), [])
+            self.assertTrue(clean_path.exists())
 
     def test_clean_augmented_uses_parquet_source_type_not_filename_suffix(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -152,13 +116,13 @@ class CleanTests(unittest.TestCase):
 
             self.assertEqual(
                 deleted,
-                [data_dir / "custom_words.parquet", augmented_path, materialized_augmented],
+                [data_dir / "custom_words.parquet", materialized_augmented],
             )
             remaining_rows = CustomWordStore(data_dir / "custom_words.parquet").rows()
             self.assertEqual([row["source_type"] for row in remaining_rows], ["generated"])
             self.assertTrue(generated_path.exists())
             self.assertTrue(materialized_generated.exists())
-            self.assertFalse(augmented_path.exists())
+            self.assertTrue(augmented_path.exists())
             self.assertFalse(materialized_augmented.exists())
 
 
