@@ -173,6 +173,60 @@ class TrainTests(unittest.TestCase):
             self.assertEqual(train_config["from_checkpoint"], str(checkpoint))
             self.assertEqual(train_config["training"]["max_epochs"], 20)
 
+    def test_train_model_dry_run_imports_exported_checkpoint_into_new_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir).resolve()
+            data_dir = project_dir / "data"
+            data_dir.mkdir()
+            for filename in ("train_manifest.jsonl", "validation_manifest.jsonl", "test_manifest.jsonl"):
+                _write_manifest(project_dir / filename)
+            exported_checkpoint_dir = project_dir / "models" / "last_checkpoint"
+            exported_checkpoint_dir.mkdir(parents=True)
+            exported_checkpoint = exported_checkpoint_dir / "last.ckpt"
+            exported_train_config = exported_checkpoint_dir / "train_config.json"
+            exported_checkpoint.write_text("checkpoint", encoding="utf-8")
+            exported_train_config.write_text(json.dumps({"labels": ["yes", "unknown"], "training": {"max_epochs": 10}}) + "\n", encoding="utf-8")
+
+            run = train_model(
+                project_dir=project_dir,
+                data_dir=Path("data"),
+                runs_dir=Path("runs"),
+                run_name="continued export",
+                model_name=DEFAULT_MODEL_NAME,
+                base_model_path=None,
+                from_checkpoint=Path("models/last_checkpoint/last.ckpt"),
+                train_manifest="train_manifest.jsonl",
+                validation_manifest="validation_manifest.jsonl",
+                test_manifest="test_manifest.jsonl",
+                max_epochs=20,
+                batch_size=2,
+                num_workers=0,
+                accelerator="cpu",
+                devices=1,
+                learning_rate=None,
+                tensorboard=True,
+                dry_run=True,
+            )
+
+            imported_checkpoint = project_dir / "runs" / "continued-export" / "checkpoints" / "last.ckpt"
+            self.assertEqual(run.run_dir, project_dir / "runs" / "continued-export")
+            self.assertEqual(run.checkpoints_dir, imported_checkpoint.parent)
+            self.assertEqual(imported_checkpoint.read_text(encoding="utf-8"), "checkpoint")
+            self.assertEqual(
+                json.loads((run.run_dir / "source_train_config.json").read_text(encoding="utf-8")),
+                {"labels": ["yes", "unknown"], "training": {"max_epochs": 10}},
+            )
+            train_config = json.loads(run.config_path.read_text(encoding="utf-8"))
+            self.assertEqual(train_config["from_checkpoint"], str(imported_checkpoint))
+            self.assertEqual(
+                train_config["resume_source"],
+                {
+                    "checkpoint_path": str(exported_checkpoint),
+                    "train_config_path": str(exported_train_config),
+                },
+            )
+            self.assertEqual(train_config["training"]["max_epochs"], 20)
+
     def test_train_model_rejects_run_name_with_checkpoint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_dir = Path(tmp_dir).resolve()

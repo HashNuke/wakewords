@@ -65,6 +65,30 @@ uv run wakewords train
 
 Training uses NeMo's `from_pretrained()` by default. To train from a local `.nemo` file instead, pass `--base-model-path`.
 
+### Export
+
+Export the latest completed training run into a project-level model bundle:
+
+```sh
+uv run wakewords export --format onnx
+```
+
+This writes `models/model.onnx` for inference, plus
+`models/last_checkpoint/last.ckpt`,
+`models/last_checkpoint/train_config.json`, `models/labels.json`, and
+`models/export_config.json` when those source files are available. The
+checkpoint directory is kept ready for continued training with the original
+training settings.
+
+Resume from an exported checkpoint bundle with:
+
+```sh
+uv run wakewords train --from-checkpoint models/last_checkpoint/last.ckpt
+```
+
+That imports the checkpoint into a new `runs/<run-name>/` directory before
+training continues.
+
 ### Find Outputs
 
 Training artifacts are written under `runs/<run-name>/`:

@@ -261,3 +261,47 @@ By default, a training run writes only inside the current project directory:
 - `runs/<timestamp>-commandrecognition_en_matchboxnet3x2x64_v2/models/`
 
 Use `--dry-run` to create the run directory and inspect `train_config.json` without starting training.
+
+## Export
+
+Export the latest completed training run to ONNX:
+
+```sh
+uv run wakewords export --format onnx
+```
+
+By default, the command selects the most recently modified run under `runs/`
+that contains a `.nemo` file, then writes a project-level bundle under
+`models/`:
+
+- `model.onnx`
+- `last_checkpoint/last.ckpt`
+- `last_checkpoint/train_config.json`
+- `labels.json`
+- `export_config.json`
+
+`model.onnx` is the deployable inference artifact. `last_checkpoint/` is the
+ready resume folder; its checkpoint contains training state, while its config
+records the labels, manifests, model name, and training settings needed to
+recreate the training setup.
+
+Resume from the exported checkpoint folder:
+
+```sh
+uv run wakewords train --from-checkpoint models/last_checkpoint/last.ckpt
+```
+
+Unlike resuming from `runs/<run-name>/checkpoints/last.ckpt`, this creates a new
+run under `runs/`, copies the exported checkpoint to
+`runs/<new-run>/checkpoints/last.ckpt`, and stores the exported training config
+as `runs/<new-run>/source_train_config.json`. The new run's
+`train_config.json` records both the imported checkpoint path and the original
+exported checkpoint source.
+
+To export a specific run:
+
+```sh
+uv run wakewords export --format onnx --run-dir runs/<run-name>
+```
+
+Pass `--overwrite` to replace an existing bundle.

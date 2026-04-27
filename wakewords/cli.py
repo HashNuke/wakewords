@@ -14,6 +14,7 @@ from wakewords.augment import augment_dataset
 from wakewords.clean import clean_dataset
 from wakewords.dataset_manifest import build_split_manifests
 from wakewords.download import download_datasets
+from wakewords.export import export_model
 from wakewords.generate import generate_audio
 from wakewords.project import init_project
 from wakewords.providers.base import GenerationPrompt, VoiceSelectionConfig
@@ -238,6 +239,34 @@ class DataTools:
         for output in run.paths():
             print(output)
 
+    def export(
+        self,
+        format: str = "onnx",
+        project_dir: str = ".",
+        runs_dir: str = "runs",
+        run_dir: str | None = None,
+        model_path: str | None = None,
+        checkpoint_path: str | None = None,
+        output_dir: str = "models",
+        overwrite: bool = False,
+        verbose: bool = False,
+    ) -> None:
+        """Export a trained model into a project-level deployable model bundle."""
+        _configure_logging(verbose=verbose)
+        bundle = export_model(
+            project_dir=Path(project_dir),
+            runs_dir=Path(runs_dir),
+            run_dir=Path(run_dir) if run_dir else None,
+            model_path=Path(model_path) if model_path else None,
+            checkpoint_path=Path(checkpoint_path) if checkpoint_path else None,
+            output_dir=Path(output_dir),
+            format=format,
+            overwrite=overwrite,
+        )
+
+        for output in bundle.paths():
+            print(output)
+
 
 def _load_generate_prompts(*, config_path: Path) -> list[GenerationPrompt]:
     if not config_path.exists():
@@ -365,6 +394,10 @@ def _normalize_cli_flags() -> None:
         "--num-workers": "--num_workers",
         "--learning-rate": "--learning_rate",
         "--dry-run": "--dry_run",
+        "--run-dir": "--run_dir",
+        "--model-path": "--model_path",
+        "--checkpoint-path": "--checkpoint_path",
+        "--output-dir": "--output_dir",
     }
     sys.argv = [_normalize_flag(arg, flag_aliases) for arg in sys.argv]
 

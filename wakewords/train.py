@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import shutil
 import sys
 from dataclasses import dataclass
 from datetime import datetime
@@ -30,6 +31,14 @@ class TrainingRun:
             self.models_dir,
             self.final_model_path,
         ]
+
+
+@dataclass(frozen=True)
+class CheckpointResume:
+    run: TrainingRun
+    checkpoint_path: Path
+    source_checkpoint_path: Path
+    source_train_config_path: Path | None
 
 
 def train_model(
@@ -67,8 +76,8 @@ def train_model(
         base_model_path = _resolve_project_path(project_dir, base_model_path)
     if from_checkpoint is not None:
         from_checkpoint = _resolve_project_path(project_dir, from_checkpoint)
-        if run_name is not None:
-            raise ValueError("run_name cannot be used with from_checkpoint; the run directory is inferred from the checkpoint")
+        if from_checkpoint.parent.name == "checkpoints" and run_name is not None:
+            raise ValueError("run_name cannot be used with an in-run checkpoint; the run directory is inferred from the checkpoint")
 
     train_manifest_path = _resolve_project_path(project_dir, Path(train_manifest))
     validation_manifest_path = _resolve_project_path(project_dir, Path(validation_manifest))
@@ -91,13 +100,23 @@ def train_model(
             run_name=run_name,
             model_name=model_name,
         )
+        resume = None
     else:
-        run = _load_training_run_from_checkpoint(from_checkpoint=from_checkpoint, model_name=model_name)
+        resume = _prepare_checkpoint_resume(
+            from_checkpoint=from_checkpoint,
+            runs_dir=runs_dir,
+            run_name=run_name,
+            model_name=model_name,
+        )
+        run = resume.run
+
+    training_checkpoint = resume.checkpoint_path if resume is not None else None
 
     train_config = {
         "model_name": model_name,
         "base_model_path": str(base_model_path) if base_model_path else None,
-        "from_checkpoint": str(from_checkpoint) if from_checkpoint else None,
+        "from_checkpoint": str(training_checkpoint) if training_checkpoint else None,
+        "resume_source": _resume_source_config(resume),
         "labels": labels,
         "manifests": {
             "train": str(train_manifest_path),
@@ -130,7 +149,7 @@ def train_model(
         run=run,
         model_name=model_name,
         base_model_path=base_model_path,
-        from_checkpoint=from_checkpoint,
+        from_checkpoint=training_checkpoint,
         labels=labels,
         train_manifest_path=train_manifest_path,
         validation_manifest_path=validation_manifest_path,
@@ -272,13 +291,52 @@ def _create_training_run(*, runs_dir: Path, run_name: str | None, model_name: st
     )
 
 
-def _load_training_run_from_checkpoint(*, from_checkpoint: Path, model_name: str) -> TrainingRun:
-    if from_checkpoint.parent.name != "checkpoints":
-        raise ValueError("from_checkpoint must point to a .ckpt file inside a checkpoints directory")
+def _prepare_checkpoint_resume(
+    *,
+    from_checkpoint: Path,
+    runs_dir: Path,
+    run_name: str | None,
+    model_name: str,
+) -> CheckpointResume:
     if from_checkpoint.suffix != ".ckpt":
         raise ValueError("from_checkpoint must point to a .ckpt file")
     if not from_checkpoint.is_file():
         raise FileNotFoundError(f"Missing checkpoint: {from_checkpoint}")
+    if from_checkpoint.parent.name == "checkpoints":
+        if run_name is not None:
+            raise ValueError("run_name cannot be used with an in-run checkpoint; the run directory is inferred from the checkpoint")
+        run = _load_training_run_from_checkpoint(from_checkpoint=from_checkpoint, model_name=model_name)
+        return CheckpointResume(
+            run=run,
+            checkpoint_path=from_checkpoint,
+            source_checkpoint_path=from_checkpoint,
+            source_train_config_path=None,
+        )
+
+    source_train_config_path = from_checkpoint.parent / "train_config.json"
+    if not source_train_config_path.is_file():
+        raise ValueError(
+            "from_checkpoint must point to a .ckpt file inside a checkpoints directory, "
+            "or to an exported checkpoint folder that also contains train_config.json"
+        )
+
+    run = _create_training_run(
+        runs_dir=runs_dir,
+        run_name=run_name,
+        model_name=model_name,
+    )
+    destination_checkpoint = run.checkpoints_dir / from_checkpoint.name
+    shutil.copyfile(from_checkpoint, destination_checkpoint)
+    shutil.copyfile(source_train_config_path, run.run_dir / "source_train_config.json")
+    return CheckpointResume(
+        run=run,
+        checkpoint_path=destination_checkpoint,
+        source_checkpoint_path=from_checkpoint,
+        source_train_config_path=source_train_config_path,
+    )
+
+
+def _load_training_run_from_checkpoint(*, from_checkpoint: Path, model_name: str) -> TrainingRun:
     run_dir = from_checkpoint.parent.parent
     if not run_dir.is_dir():
         raise FileNotFoundError(f"Missing run directory: {run_dir}")
@@ -296,6 +354,15 @@ def _load_training_run_from_checkpoint(*, from_checkpoint: Path, model_name: str
         models_dir=models_dir,
         final_model_path=models_dir / f"{safe_model_name}.nemo",
     )
+
+
+def _resume_source_config(resume: CheckpointResume | None) -> dict[str, str | None] | None:
+    if resume is None or resume.source_checkpoint_path == resume.checkpoint_path:
+        return None
+    return {
+        "checkpoint_path": str(resume.source_checkpoint_path),
+        "train_config_path": str(resume.source_train_config_path) if resume.source_train_config_path is not None else None,
+    }
 
 
 def _load_labels(*, project_dir: Path, manifest_paths: list[Path]) -> list[str]:
