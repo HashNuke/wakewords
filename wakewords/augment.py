@@ -47,20 +47,6 @@ class AugmentTask:
     noise: NoiseSample | None
     snr: int | None
 
-    @property
-    def output_filename(self) -> str:
-        tempo_label = _tempo_label(self.tempo)
-        if self.noise is None:
-            filename = f"{self.source.sample_id}-{tempo_label}-clean-nonoise-nosnr.wav"
-        else:
-            noise_name = _filename_token(self.noise.path.stem)
-            filename = f"{self.source.sample_id}-{tempo_label}-{noise_name}-snr{self.snr:02d}.wav"
-        return filename
-
-    @property
-    def output_path(self) -> Path:
-        return Path(self.source.word) / self.output_filename
-
 
 def augment_dataset(
     *,
@@ -261,8 +247,13 @@ def _selection_seed(*, source: SourceSample, category: str) -> int:
 
 
 def _run_task(*, task: AugmentTask, store: CustomWordStore, overwrite: bool) -> bool:
-    output_filename = task.output_filename
-    if store.contains(label=task.source.word, filename=output_filename) and not overwrite:
+    existing = store.find_augmented(
+        parent_sample_id=task.source.sample_id,
+        tempo=task.tempo,
+        noise_type=task.noise.path.stem if task.noise is not None else None,
+        snr=task.snr,
+    )
+    if existing is not None and not overwrite:
         return False
 
     source_temp_path: Path | None = None
@@ -296,7 +287,6 @@ def _run_task(*, task: AugmentTask, store: CustomWordStore, overwrite: bool) -> 
         return store.upsert(
             build_augmented_row(
                 audio_bytes=audio_bytes,
-                filename=output_filename,
                 source_row=task.source.row,
                 tempo=task.tempo,
                 noise_type=task.noise.path.stem if task.noise is not None else None,
@@ -433,11 +423,6 @@ def _run_ffmpeg(command: list[str]) -> None:
 
 def _tempo_label(tempo: float) -> str:
     return f"t{int(round(tempo * 100)):03d}"
-
-
-def _filename_token(value: str) -> str:
-    slug = "".join(ch.lower() for ch in value if ch.isalnum())
-    return slug or "untitled"
 
 
 def _deterministic_fraction(source_key: str, noise_path: Path, tempo: float, snr: int) -> float:

@@ -88,11 +88,12 @@ class GenerateCommandTests(unittest.TestCase):
             prompts=["Hey Astra", "hey-astra"],
             voices=[voice],
             voice_codes={voice.id: "cr1"},
+            provider="cr",
         )
 
         self.assertEqual(len(tasks), 1)
         self.assertEqual(tasks[0].word_slug, "hey-astra")
-        self.assertEqual(tasks[0].filename, "heyastra-cr1-t100-clean-nonoise-nosnr.wav")
+        self.assertTrue(tasks[0].sample_id)
 
     def test_cartesia_generate_writes_only_parquet(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -125,7 +126,7 @@ class GenerateCommandTests(unittest.TestCase):
             rows = CustomWordStore(data_dir / "custom_words.parquet").rows()
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["label"], "hey-astra")
-            self.assertEqual(rows[0]["filename"], "heyastra-cr1-t100-clean-nonoise-nosnr.wav")
+            self.assertNotIn("filename", rows[0])
             self.assertIsInstance(rows[0]["audio_bytes"], bytes)
 
 

@@ -15,7 +15,6 @@ class CustomWordStoreTests(unittest.TestCase):
             store = CustomWordStore(Path(tmp_dir) / "custom_words.parquet")
             row = build_generated_row(
                 audio_bytes=_wav_bytes(),
-                filename="dexa-cr1-t100-clean-nonoise-nosnr.wav",
                 label="dexa",
                 voice_id="voice-123",
                 voice_code="cr1",
@@ -34,12 +33,11 @@ class CustomWordStoreTests(unittest.TestCase):
             self.assertEqual(rows[0]["provider"], "cr")
             self.assertEqual(rows[0]["duration_ms"], 250)
 
-    def test_upsert_skips_duplicate_filename_without_overwrite(self) -> None:
+    def test_upsert_skips_duplicate_sample_without_overwrite(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = CustomWordStore(Path(tmp_dir) / "custom_words.parquet")
             first = build_generated_row(
                 audio_bytes=_wav_bytes(),
-                filename="dexa-cr1-t100-clean-nonoise-nosnr.wav",
                 label="dexa",
                 voice_id="voice-123",
                 voice_code="cr1",
@@ -48,7 +46,6 @@ class CustomWordStoreTests(unittest.TestCase):
             )
             second = build_generated_row(
                 audio_bytes=_wav_bytes(duration_ms=500),
-                filename="dexa-cr1-t100-clean-nonoise-nosnr.wav",
                 label="dexa",
                 voice_id="voice-123",
                 voice_code="cr1",
@@ -69,7 +66,6 @@ class CustomWordStoreTests(unittest.TestCase):
             store.upsert(
                 build_generated_row(
                     audio_bytes=_wav_bytes(),
-                    filename="dexa-cr1-t100-clean-nonoise-nosnr.wav",
                     label="dexa",
                     voice_id="voice-123",
                     voice_code="cr1",

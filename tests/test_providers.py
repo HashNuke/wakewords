@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from wakewords.providers import get_provider
-from wakewords.providers.cartesia import _filename_token, _slug
+from wakewords.providers.cartesia import _slug
 
 
 class ProviderRegistryTests(unittest.TestCase):
@@ -75,9 +75,6 @@ class ProviderRegistryTests(unittest.TestCase):
 
     def test_cartesia_slug_keeps_label_separators(self) -> None:
         self.assertEqual(_slug("Hey-Astra Now"), "hey-astra-now")
-
-    def test_cartesia_filename_token_removes_separators(self) -> None:
-        self.assertEqual(_filename_token("Hey-Astra Now"), "heyastranow")
 
 
 if __name__ == "__main__":

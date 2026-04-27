@@ -71,31 +71,11 @@ class AugmentTests(unittest.TestCase):
         self.assertEqual(len({task.noise for task in tasks}), 2)
         self.assertEqual(len({task.snr for task in tasks}), 1)
 
-    def test_noisy_output_path_uses_single_environment_name_without_separators(self) -> None:
-        task = AugmentTask(
-            source=SourceSample(
-                sample_id="sample-hey-1",
-                word="hey-astra now",
-                provider="cr",
-                voice_id="voice-107",
-                duration=1.0,
-                duration_ms=1000,
-                audio_bytes=b"wav",
-                row={},
-            ),
-            tempo=0.95,
-            noise=NoiseSample(path=Path("background_audio/doing-the_dishes.wav"), duration=60.0, duration_ms=60000),
-            snr=10,
-        )
-
-        self.assertEqual(task.output_path.name, "sample-hey-1-t095-doingthedishes-snr10.wav")
-
     def test_collect_sources_keeps_directory_label_with_hyphens(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = CustomWordStore(Path(tmp_dir) / "custom_words.parquet")
             row = build_generated_row(
                 audio_bytes=_wav_bytes(),
-                filename="heyastranow-cr107-t100-clean-nonoise-nosnr.wav",
                 label="hey-astra-now",
                 voice_id="voice-107",
                 voice_code="cr107",
@@ -125,7 +105,6 @@ class AugmentTests(unittest.TestCase):
             store.upsert(
                 build_generated_row(
                     audio_bytes=_wav_bytes(),
-                    filename="yes-cr1-t100-clean-nonoise-nosnr.wav",
                     label="yes",
                     voice_id="voice-1",
                     voice_code="cr1",
@@ -157,7 +136,8 @@ class AugmentTests(unittest.TestCase):
             generated = next(row for row in rows if row["source_type"] == "generated")
             augmented = next(row for row in rows if row["source_type"] == "augmented")
             self.assertEqual(augmented["label"], "yes")
-            self.assertEqual(augmented["filename"], f"{generated['sample_id']}-t100-rain-snr10.wav")
+            self.assertNotIn("filename", generated)
+            self.assertNotIn("filename", augmented)
             self.assertEqual(augmented["tempo"], 1.0)
             self.assertEqual(augmented["noise_type"], "rain")
             self.assertEqual(augmented["snr"], 10)

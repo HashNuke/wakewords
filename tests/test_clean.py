@@ -54,7 +54,6 @@ class CleanTests(unittest.TestCase):
             store = CustomWordStore(data_dir / "custom_words.parquet")
             generated_row = build_generated_row(
                 audio_bytes=_wav_bytes(),
-                filename=clean_path.name,
                 label="yes",
                 voice_id="voice-1",
                 voice_code="cr1",
@@ -88,7 +87,6 @@ class CleanTests(unittest.TestCase):
             store = CustomWordStore(data_dir / "custom_words.parquet")
             generated_row = build_generated_row(
                 audio_bytes=_wav_bytes(),
-                filename=generated_path.name,
                 label="yes",
                 voice_id="voice-1",
                 voice_code="cr1",
@@ -98,7 +96,6 @@ class CleanTests(unittest.TestCase):
             store.upsert(generated_row, overwrite=False)
             augmented_row = build_augmented_row(
                 audio_bytes=_wav_bytes(),
-                filename=augmented_path.name,
                 source_row=generated_row,
                 tempo=1.0,
                 noise_type="rain",

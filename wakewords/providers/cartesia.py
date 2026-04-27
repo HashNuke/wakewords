@@ -76,7 +76,7 @@ class CartesiaProvider:
             selected_voice.id: store.voice_code(provider=self.short_code, voice_id=selected_voice.id)
             for selected_voice in voices
         }
-        tasks = _build_tasks(prompts=prompts, voices=voices, voice_codes=voice_codes)
+        tasks = _build_tasks(prompts=prompts, voices=voices, voice_codes=voice_codes, provider=self.short_code)
 
         wrote_rows = False
 
@@ -149,7 +149,7 @@ class CartesiaProvider:
         encoding: str,
         overwrite: bool,
     ) -> bool:
-        existing = store.get(label=task.word_slug, filename=task.filename)
+        existing = store.get_by_sample_id(task.sample_id)
         if existing is not None and not overwrite:
             return False
 
@@ -177,7 +177,6 @@ class CartesiaProvider:
         store.upsert(
             build_generated_row(
                 audio_bytes=audio_bytes,
-                filename=task.filename,
                 label=task.word_slug,
                 voice_id=task.voice.id,
                 voice_code=task.voice_code,
@@ -191,34 +190,32 @@ class CartesiaProvider:
 
 
 class _GenerationTask:
-    def __init__(self, *, prompt: str, voice: Voice, voice_code: str, word_slug: str, filename: str) -> None:
+    def __init__(self, *, prompt: str, voice: Voice, voice_code: str, word_slug: str, sample_id: str) -> None:
         self.prompt = prompt
         self.voice = voice
         self.voice_code = voice_code
         self.word_slug = word_slug
-        self.filename = filename
+        self.sample_id = sample_id
 
 
-def _build_tasks(*, prompts: list[str], voices: list[Voice], voice_codes: dict[str, str]) -> list[_GenerationTask]:
+def _build_tasks(*, prompts: list[str], voices: list[Voice], voice_codes: dict[str, str], provider: str) -> list[_GenerationTask]:
     tasks: list[_GenerationTask] = []
-    seen: set[tuple[str, str]] = set()
+    seen: set[str] = set()
     for selected_voice in voices:
         voice_code = voice_codes[selected_voice.id]
         for prompt in prompts:
             word_slug = _slug(prompt)
-            filename_word = _filename_token(prompt)
-            filename = f"{filename_word}-{voice_code}-t100-clean-nonoise-nosnr.wav"
-            key = (word_slug, filename)
-            if key in seen:
+            sample_id = _generated_sample_id(label=word_slug, provider=provider, voice_id=selected_voice.id)
+            if sample_id in seen:
                 continue
-            seen.add(key)
+            seen.add(sample_id)
             tasks.append(
                 _GenerationTask(
                     prompt=prompt,
                     voice=selected_voice,
                     voice_code=voice_code,
                     word_slug=word_slug,
-                    filename=filename,
+                    sample_id=sample_id,
                 )
             )
     return tasks
@@ -249,6 +246,7 @@ def _slug(value: str) -> str:
     return slug or "untitled"
 
 
-def _filename_token(value: str) -> str:
-    slug = "".join(ch.lower() for ch in value if ch.isalnum())
-    return slug or "untitled"
+def _generated_sample_id(*, label: str, provider: str, voice_id: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(f"generated\0{label}\0{provider}\0{voice_id}".encode("utf-8")).hexdigest()

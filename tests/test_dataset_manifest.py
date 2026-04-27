@@ -20,7 +20,6 @@ class DatasetManifestTests(unittest.TestCase):
             store.upsert(
                 build_generated_row(
                     audio_bytes=_wav_bytes(),
-                    filename="yes-cr1-t100-clean-nonoise-nosnr.wav",
                     label="yes",
                     voice_id="voice-1",
                     voice_code="cr1",
