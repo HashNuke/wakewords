@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import os
-import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from tqdm import tqdm
@@ -10,7 +9,6 @@ from pathlib import Path
 
 from cartesia import Cartesia
 
-from wakewords.manifest import ManifestStore
 from wakewords.parquet_store import CustomWordStore, build_generated_row
 from wakewords.providers.base import Voice
 
@@ -74,23 +72,20 @@ class CartesiaProvider:
     ) -> list[Path]:
         voices = self._select_voices(voice=voice, voices=voices, all_voices=all_voices, lang=lang)
         store = CustomWordStore(parquet_path)
-        manifests = ManifestStore()
-        tasks = [
-            _GenerationTask(prompt=prompt, voice=selected_voice)
+        voice_codes = {
+            selected_voice.id: store.voice_code(provider=self.short_code, voice_id=selected_voice.id)
             for selected_voice in voices
-            for prompt in prompts
-        ]
+        }
+        tasks = _build_tasks(prompts=prompts, voices=voices, voice_codes=voice_codes)
 
-        outputs: list[Path] = []
+        wrote_rows = False
 
         with ThreadPoolExecutor(max_workers=concurrency) as executor:
             futures = [
                 executor.submit(
                     self._generate_one,
                     task=task,
-                    data_dir=data_dir,
                     store=store,
-                    manifests=manifests,
                     lang=lang,
                     model_id=model_id,
                     sample_rate=sample_rate,
@@ -102,10 +97,10 @@ class CartesiaProvider:
 
             with tqdm(total=len(futures), unit="file") as bar:
                 for future in as_completed(futures):
-                    outputs.append(future.result())
+                    wrote_rows = future.result() or wrote_rows
                     bar.update(1)
 
-        return sorted(set(outputs))
+        return [parquet_path] if wrote_rows or tasks else []
 
     def _select_voices(
         self,
@@ -147,29 +142,16 @@ class CartesiaProvider:
         self,
         *,
         task: "_GenerationTask",
-        data_dir: Path,
         store: CustomWordStore,
-        manifests: ManifestStore,
         lang: str | None,
         model_id: str,
         sample_rate: int,
         encoding: str,
         overwrite: bool,
-    ) -> Path:
-        voice_code = store.voice_code(provider=self.short_code, voice_id=task.voice.id)
-        word_slug = _slug(task.prompt)
-        filename_word = _filename_token(task.prompt)
-        word_dir = data_dir / word_slug
-        word_dir.mkdir(parents=True, exist_ok=True)
-        output_path = word_dir / f"{filename_word}-{voice_code}-t100-clean-nonoise-nosnr.wav"
-
-        existing = store.get(label=word_slug, filename=output_path.name)
+    ) -> bool:
+        existing = store.get(label=task.word_slug, filename=task.filename)
         if existing is not None and not overwrite:
-            audio_bytes = existing.get("audio_bytes")
-            if isinstance(audio_bytes, bytes):
-                output_path.write_bytes(audio_bytes)
-            manifests.for_word_dir(word_dir).record(audio_path=output_path, label=word_slug)
-            return output_path
+            return False
 
         with _client() as client:
             generate_kwargs = {}
@@ -190,37 +172,56 @@ class CartesiaProvider:
                 },
                 **generate_kwargs,
             )
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
-                temp_path = Path(tmp_file.name)
-            try:
-                response.write_to_file(str(temp_path))
-                audio_bytes = temp_path.read_bytes()
-            finally:
-                temp_path.unlink(missing_ok=True)
+            audio_bytes = response.read()
 
         store.upsert(
             build_generated_row(
                 audio_bytes=audio_bytes,
-                filename=output_path.name,
-                label=word_slug,
+                filename=task.filename,
+                label=task.word_slug,
                 voice_id=task.voice.id,
-                voice_code=voice_code,
+                voice_code=task.voice_code,
                 provider=self.short_code,
                 lang=lang or task.voice.language,
             ),
             overwrite=overwrite,
         )
 
-        output_path.write_bytes(audio_bytes)
-        manifests.for_word_dir(word_dir).record(audio_path=output_path, label=word_slug)
-
-        return output_path
+        return True
 
 
 class _GenerationTask:
-    def __init__(self, *, prompt: str, voice: Voice) -> None:
+    def __init__(self, *, prompt: str, voice: Voice, voice_code: str, word_slug: str, filename: str) -> None:
         self.prompt = prompt
         self.voice = voice
+        self.voice_code = voice_code
+        self.word_slug = word_slug
+        self.filename = filename
+
+
+def _build_tasks(*, prompts: list[str], voices: list[Voice], voice_codes: dict[str, str]) -> list[_GenerationTask]:
+    tasks: list[_GenerationTask] = []
+    seen: set[tuple[str, str]] = set()
+    for selected_voice in voices:
+        voice_code = voice_codes[selected_voice.id]
+        for prompt in prompts:
+            word_slug = _slug(prompt)
+            filename_word = _filename_token(prompt)
+            filename = f"{filename_word}-{voice_code}-t100-clean-nonoise-nosnr.wav"
+            key = (word_slug, filename)
+            if key in seen:
+                continue
+            seen.add(key)
+            tasks.append(
+                _GenerationTask(
+                    prompt=prompt,
+                    voice=selected_voice,
+                    voice_code=voice_code,
+                    word_slug=word_slug,
+                    filename=filename,
+                )
+            )
+    return tasks
 
 
 def _voice_from_response(raw_voice: object) -> Voice:

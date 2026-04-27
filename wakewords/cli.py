@@ -130,7 +130,7 @@ class DataTools:
         test_filename: str = "test_manifest.jsonl",
         verbose: bool = False,
     ) -> None:
-        """Build train/validation/test manifests from per-word manifests."""
+        """Build train/validation/test manifests from Parquet custom words and Google Speech Commands."""
         _configure_logging(verbose=verbose)
         outputs = build_split_manifests(
             data_dir=Path(data_dir),
@@ -190,9 +190,9 @@ class DataTools:
         model_name: str = DEFAULT_MODEL_NAME,
         base_model_path: str | None = None,
         from_checkpoint: str | None = None,
-        train_manifest: str = "train_manifest.jsonl",
-        validation_manifest: str = "validation_manifest.jsonl",
-        test_manifest: str = "test_manifest.jsonl",
+        train_manifest: str = "data/manifests/train_manifest.jsonl",
+        validation_manifest: str = "data/manifests/validation_manifest.jsonl",
+        test_manifest: str = "data/manifests/test_manifest.jsonl",
         max_epochs: int = 10,
         batch_size: int = 32,
         num_workers: int = 4,

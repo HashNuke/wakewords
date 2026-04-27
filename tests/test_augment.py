@@ -1,13 +1,25 @@
 from __future__ import annotations
 
 import json
+import io
 import tempfile
 import unittest
+import wave
 from pathlib import Path
 from unittest import mock
 
-from wakewords.augment import AugmentTask, NoiseSample, SourceSample, _build_tasks, _collect_noises, _collect_sources, _combo_shape, _select_subset
-from wakewords.manifest import ManifestStore
+from wakewords.augment import (
+    AugmentTask,
+    NoiseSample,
+    SourceSample,
+    _build_tasks,
+    _collect_noises,
+    _collect_sources,
+    _combo_shape,
+    _select_subset,
+    augment_dataset,
+)
+from wakewords.parquet_store import CustomWordStore, build_generated_row
 
 
 class AugmentTests(unittest.TestCase):
@@ -31,11 +43,13 @@ class AugmentTests(unittest.TestCase):
 
     def test_build_tasks_uses_subset_combo_counts_per_voice(self) -> None:
         source = SourceSample(
-            path=Path("data/yes/yes-cr1-t100-clean-nonoise-nosnr.wav"),
             word="yes",
+            filename="yes-cr1-t100-clean-nonoise-nosnr.wav",
             voice_code="cr1",
             duration=1.0,
             duration_ms=1000,
+            audio_bytes=b"wav",
+            row={},
         )
         noises = [
             NoiseSample(path=Path(f"background_audio/noise-{index}.wav"), duration=60.0, duration_ms=60000)
@@ -59,11 +73,13 @@ class AugmentTests(unittest.TestCase):
     def test_noisy_output_path_uses_single_environment_name_without_separators(self) -> None:
         task = AugmentTask(
             source=SourceSample(
-                path=Path("data/astra/astra-cr107-t100-clean-nonoise-nosnr.wav"),
                 word="hey-astra now",
+                filename="heyastranow-cr107-t100-clean-nonoise-nosnr.wav",
                 voice_code="cr107",
                 duration=1.0,
                 duration_ms=1000,
+                audio_bytes=b"wav",
+                row={},
             ),
             tempo=0.95,
             noise=NoiseSample(path=Path("background_audio/doing-the_dishes.wav"), duration=60.0, duration_ms=60000),
@@ -74,18 +90,74 @@ class AugmentTests(unittest.TestCase):
 
     def test_collect_sources_keeps_directory_label_with_hyphens(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            word_dir = Path(tmp_dir) / "hey-astra-now"
-            word_dir.mkdir()
-            wav_path = word_dir / "heyastranow-cr107-t100-clean-nonoise-nosnr.wav"
-            wav_path.write_bytes(b"not probed because manifest exists")
-            (word_dir / "manifest.jsonl").write_text(
-                json.dumps({"audio_filepath": wav_path.name, "duration": 1.0, "duration_ms": 1000, "label": "hey-astra-now"}) + "\n",
-                encoding="utf-8",
+            store = CustomWordStore(Path(tmp_dir) / "custom_words.parquet")
+            store.upsert(
+                build_generated_row(
+                    audio_bytes=_wav_bytes(),
+                    filename="heyastranow-cr107-t100-clean-nonoise-nosnr.wav",
+                    label="hey-astra-now",
+                    voice_id="voice-107",
+                    voice_code="cr107",
+                    provider="cr",
+                    lang="en",
+                ),
+                overwrite=False,
             )
 
-            sources = _collect_sources(Path(tmp_dir), ManifestStore())
+            sources = _collect_sources(store)
 
         self.assertEqual([source.word for source in sources], ["hey-astra-now"])
+
+    def test_augment_dataset_appends_parquet_rows_without_wav_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            data_dir = project_dir / "data"
+            noises_dir = project_dir / "background_audio"
+            noises_dir.mkdir()
+            (noises_dir / "rain.wav").write_bytes(b"not read because manifest exists")
+            (noises_dir / "manifest.jsonl").write_text(
+                json.dumps({"audio": "rain.wav", "duration_ms": 1000}) + "\n",
+                encoding="utf-8",
+            )
+            store = CustomWordStore(data_dir / "custom_words.parquet")
+            store.upsert(
+                build_generated_row(
+                    audio_bytes=_wav_bytes(),
+                    filename="yes-cr1-t100-clean-nonoise-nosnr.wav",
+                    label="yes",
+                    voice_id="voice-1",
+                    voice_code="cr1",
+                    provider="cr",
+                    lang="en",
+                ),
+                overwrite=False,
+            )
+
+            with (
+                mock.patch("wakewords.augment._tempo_adjust", side_effect=_copy_to_temp_wav),
+                mock.patch("wakewords.augment._extract_noise_segment", side_effect=lambda **_: _temp_wav(_wav_bytes())),
+                mock.patch("wakewords.augment._mix_to_snr", side_effect=lambda **kwargs: kwargs["output_path"].write_bytes(_wav_bytes())),
+            ):
+                outputs = augment_dataset(
+                    data_dir=data_dir,
+                    noises_dir=noises_dir,
+                    concurrency=1,
+                    overwrite=False,
+                    tempos=(1.0,),
+                    snrs=(10,),
+                    target_samples_per_word=2,
+                )
+
+            self.assertEqual(outputs, [data_dir / "custom_words.parquet"])
+            self.assertFalse((data_dir / "yes").exists())
+            rows = CustomWordStore(data_dir / "custom_words.parquet").rows()
+            self.assertEqual(sorted(row["source_type"] for row in rows), ["augmented", "generated"])
+            augmented = next(row for row in rows if row["source_type"] == "augmented")
+            self.assertEqual(augmented["label"], "yes")
+            self.assertEqual(augmented["filename"], "yes-cr1-t100-rain-snr10.wav")
+            self.assertEqual(augmented["tempo"], 1.0)
+            self.assertEqual(augmented["noise_type"], "rain")
+            self.assertEqual(augmented["snr"], 10)
 
     def test_combo_shape_tracks_target_as_voice_count_changes(self) -> None:
         self.assertEqual(
@@ -111,11 +183,13 @@ class AugmentTests(unittest.TestCase):
 
     def test_select_subset_shuffles_deterministically_per_voice_and_category(self) -> None:
         source = SourceSample(
-            path=Path("data/yes/yes-cr1-t100-clean-nonoise-nosnr.wav"),
             word="yes",
+            filename="yes-cr1-t100-clean-nonoise-nosnr.wav",
             voice_code="cr1",
             duration=1.0,
             duration_ms=1000,
+            audio_bytes=b"wav",
+            row={},
         )
         values = (0.85, 0.90, 0.95, 1.0, 1.05, 1.10, 1.15)
 
@@ -126,6 +200,30 @@ class AugmentTests(unittest.TestCase):
         self.assertEqual(len(first), 5)
         self.assertEqual(len(set(first)), 5)
         self.assertNotEqual(first, values[:5])
+
+
+def _wav_bytes(*, duration_ms: int = 250) -> bytes:
+    sample_rate = 16000
+    frame_count = sample_rate * duration_ms // 1000
+    with io.BytesIO() as buffer:
+        with wave.open(buffer, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(b"\x00\x00" * frame_count)
+        return buffer.getvalue()
+
+
+def _temp_wav(audio_bytes: bytes) -> Path:
+    temp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    temp_path = Path(temp_file.name)
+    temp_file.close()
+    temp_path.write_bytes(audio_bytes)
+    return temp_path
+
+
+def _copy_to_temp_wav(source_path: Path, tempo: float) -> Path:
+    return _temp_wav(source_path.read_bytes())
 
 
 if __name__ == "__main__":

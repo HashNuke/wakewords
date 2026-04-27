@@ -62,9 +62,10 @@ class TrainTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_dir = Path(tmp_dir).resolve()
             data_dir = project_dir / "data"
-            data_dir.mkdir()
+            manifests_dir = data_dir / "manifests"
+            manifests_dir.mkdir(parents=True)
             for filename in ("train_manifest.jsonl", "validation_manifest.jsonl", "test_manifest.jsonl"):
-                _write_manifest(project_dir / filename)
+                _write_manifest(manifests_dir / filename)
 
             stdout = io.StringIO()
             argv = [

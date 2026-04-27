@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
-from wakewords.manifest import ManifestStore
+from wakewords.parquet_store import CustomWordStore, build_augmented_row
 from tqdm import tqdm
 
 
@@ -24,11 +24,13 @@ _BASE_SUFFIX = "-t100-clean-nonoise-nosnr.wav"
 
 @dataclass(frozen=True)
 class SourceSample:
-    path: Path
     word: str
+    filename: str
     voice_code: str
     duration: float
     duration_ms: int
+    audio_bytes: bytes
+    row: dict[str, object]
 
 
 @dataclass(frozen=True)
@@ -46,7 +48,7 @@ class AugmentTask:
     snr: int | None
 
     @property
-    def output_path(self) -> Path:
+    def output_filename(self) -> str:
         word_name = _filename_token(self.source.word)
         tempo_label = _tempo_label(self.tempo)
         if self.noise is None:
@@ -54,7 +56,11 @@ class AugmentTask:
         else:
             noise_name = _filename_token(self.noise.path.stem)
             filename = f"{word_name}-{self.source.voice_code}-{tempo_label}-{noise_name}-snr{self.snr:02d}.wav"
-        return self.source.path.parent / filename
+        return filename
+
+    @property
+    def output_path(self) -> Path:
+        return Path(self.source.word) / self.output_filename
 
 
 def augment_dataset(
@@ -70,10 +76,11 @@ def augment_dataset(
     if concurrency < 1:
         raise ValueError("concurrency must be >= 1")
 
-    manifests = ManifestStore()
-    sources = _collect_sources(data_dir, manifests)
+    parquet_path = data_dir / "custom_words.parquet"
+    store = CustomWordStore(parquet_path)
+    sources = _collect_sources(store)
     if not sources:
-        raise ValueError(f"No clean generated files found under {data_dir}.")
+        raise ValueError(f"No clean generated rows found in {parquet_path}.")
 
     noises = _collect_noises(noises_dir)
     if not noises:
@@ -90,38 +97,44 @@ def augment_dataset(
 
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
         futures = [
-            executor.submit(_run_task, task=task, manifests=manifests, overwrite=overwrite)
+            executor.submit(_run_task, task=task, store=store, overwrite=overwrite)
             for task in tasks
         ]
         with tqdm(total=len(futures), unit="file") as bar:
             for future in as_completed(futures):
-                outputs.append(future.result())
+                if future.result():
+                    outputs.append(parquet_path)
                 bar.update(1)
 
-    return sorted(outputs)
+    return sorted(set(outputs))
 
 
-def _collect_sources(data_dir: Path, manifests: ManifestStore) -> list[SourceSample]:
+def _collect_sources(store: CustomWordStore) -> list[SourceSample]:
     sources: list[SourceSample] = []
-    for wav_path in sorted(data_dir.glob("*/*.wav")):
-        if wav_path.parent.name == "_noises_":
+    for row in store.rows():
+        if row.get("source_type") != "generated":
             continue
-        parsed = _parse_source_filename(wav_path.name)
+        filename = row.get("filename")
+        label = row.get("label")
+        audio_bytes = row.get("audio_bytes")
+        voice_code = row.get("voice_code")
+        duration_ms = row.get("duration_ms")
+        if not isinstance(filename, str) or not isinstance(label, str):
+            continue
+        if not isinstance(audio_bytes, bytes) or not isinstance(voice_code, str) or not isinstance(duration_ms, int):
+            continue
+        parsed = _parse_source_filename(filename)
         if parsed is None:
             continue
-        _, voice_code = parsed
-        label = wav_path.parent.name
-        manifest = manifests.for_word_dir(wav_path.parent)
-        entry = manifest.get(wav_path)
-        if entry is None:
-            entry = manifest.record(audio_path=wav_path, label=label)
         sources.append(
             SourceSample(
-                path=wav_path,
                 word=label,
                 voice_code=voice_code,
-                duration=float(entry["duration"]),
-                duration_ms=int(entry["duration_ms"]),
+                filename=filename,
+                duration=duration_ms / 1000,
+                duration_ms=duration_ms,
+                audio_bytes=audio_bytes,
+                row=row,
             )
         )
     return sources
@@ -249,44 +262,59 @@ def _selection_seed(*, source: SourceSample, category: str) -> int:
     return int.from_bytes(digest[:8], "big")
 
 
-def _run_task(*, task: AugmentTask, manifests: ManifestStore, overwrite: bool) -> Path:
-    output_path = task.output_path
-    manifest = manifests.for_word_dir(output_path.parent)
-    if output_path.exists() and not overwrite:
-        manifest.record(audio_path=output_path, label=task.source.word)
-        return output_path
+def _run_task(*, task: AugmentTask, store: CustomWordStore, overwrite: bool) -> bool:
+    output_filename = task.output_filename
+    if store.contains(label=task.source.word, filename=output_filename) and not overwrite:
+        return False
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    source_temp_path: Path | None = None
     speech_temp_path: Path | None = None
     noise_temp_path: Path | None = None
+    output_temp_path: Path | None = None
     try:
-        speech_temp_path = _tempo_adjust(task.source.path, task.tempo)
+        source_temp_path = _new_temp_wav_path()
+        source_temp_path.write_bytes(task.source.audio_bytes)
+        speech_temp_path = _tempo_adjust(source_temp_path, task.tempo)
         if task.noise is None:
-            output_path.write_bytes(speech_temp_path.read_bytes())
-            manifest.record(audio_path=output_path, label=task.source.word)
-            return output_path
+            audio_bytes = speech_temp_path.read_bytes()
+        else:
+            duration = task.source.duration / task.tempo
+            noise_temp_path = _extract_noise_segment(
+                source_key=f"{task.source.word}/{task.source.filename}",
+                noise=task.noise,
+                duration=duration,
+                tempo=task.tempo,
+                snr=task.snr or 0,
+            )
+            output_temp_path = _new_temp_wav_path()
+            _mix_to_snr(
+                speech_path=speech_temp_path,
+                noise_path=noise_temp_path,
+                output_path=output_temp_path,
+                snr_db=task.snr or 0,
+            )
+            audio_bytes = output_temp_path.read_bytes()
 
-        duration = task.source.duration / task.tempo
-        noise_temp_path = _extract_noise_segment(
-            source_path=task.source.path,
-            noise=task.noise,
-            duration=duration,
-            tempo=task.tempo,
-            snr=task.snr or 0,
+        return store.upsert(
+            build_augmented_row(
+                audio_bytes=audio_bytes,
+                filename=output_filename,
+                source_row=task.source.row,
+                tempo=task.tempo,
+                noise_type=task.noise.path.stem if task.noise is not None else None,
+                snr=task.snr,
+            ),
+            overwrite=overwrite,
         )
-        _mix_to_snr(
-            speech_path=speech_temp_path,
-            noise_path=noise_temp_path,
-            output_path=output_path,
-            snr_db=task.snr or 0,
-        )
-        manifest.record(audio_path=output_path, label=task.source.word)
-        return output_path
     finally:
+        if source_temp_path is not None:
+            source_temp_path.unlink(missing_ok=True)
         if speech_temp_path is not None:
             speech_temp_path.unlink(missing_ok=True)
         if noise_temp_path is not None:
             noise_temp_path.unlink(missing_ok=True)
+        if output_temp_path is not None:
+            output_temp_path.unlink(missing_ok=True)
 
 
 def _parse_source_filename(filename: str) -> tuple[str, str] | None:
@@ -323,14 +351,14 @@ def _tempo_adjust(source_path: Path, tempo: float) -> Path:
 
 def _extract_noise_segment(
     *,
-    source_path: Path,
+    source_key: str,
     noise: NoiseSample,
     duration: float,
     tempo: float,
     snr: int,
 ) -> Path:
     max_start = max(noise.duration - duration, 0.0)
-    start = 0.0 if max_start == 0 else _deterministic_fraction(source_path, noise.path, tempo, snr) * max_start
+    start = 0.0 if max_start == 0 else _deterministic_fraction(source_key, noise.path, tempo, snr) * max_start
 
     temp_path = _new_temp_wav_path()
     _run_ffmpeg([
@@ -428,8 +456,8 @@ def _filename_token(value: str) -> str:
     return slug or "untitled"
 
 
-def _deterministic_fraction(source_path: Path, noise_path: Path, tempo: float, snr: int) -> float:
-    key = "|".join((str(source_path), str(noise_path), _tempo_label(tempo), f"snr{snr:02d}"))
+def _deterministic_fraction(source_key: str, noise_path: Path, tempo: float, snr: int) -> float:
+    key = "|".join((source_key, str(noise_path), _tempo_label(tempo), f"snr{snr:02d}"))
     digest = hashlib.sha256(key.encode("utf-8")).digest()
     return int.from_bytes(digest[:8], "big") / 2**64
 

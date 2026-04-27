@@ -5,6 +5,7 @@ import io
 import re
 import threading
 import wave
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -90,6 +91,25 @@ class CustomWordStore:
             self._write()
             return True
 
+    def delete_matching(self, predicate: "Callable[[dict[str, object]], bool]") -> list[dict[str, object]]:
+        removed: list[dict[str, object]] = []
+        with self._lock:
+            remaining_rows: dict[str, dict[str, object]] = {}
+            remaining_keys: dict[tuple[str, str], str] = {}
+            for sample_id, row in self._rows.items():
+                if predicate(row):
+                    removed.append(dict(row))
+                    continue
+                remaining_rows[sample_id] = row
+                remaining_keys[_row_key(row)] = sample_id
+            if not removed:
+                return []
+            self._rows = remaining_rows
+            self._keys = remaining_keys
+            self._rebuild_voice_codes()
+            self._write()
+            return removed
+
     def rows(self) -> list[dict[str, object]]:
         with self._lock:
             return [dict(row) for row in sorted(self._rows.values(), key=lambda row: (_require_str(row, "label"), _require_str(row, "filename")))]
@@ -119,6 +139,12 @@ class CustomWordStore:
         match = re.fullmatch(rf"{re.escape(provider)}(\d+)", voice_code)
         if match is not None:
             self._provider_counters[provider] = max(self._provider_counters.get(provider, 0), int(match.group(1)))
+
+    def _rebuild_voice_codes(self) -> None:
+        self._voice_codes = {}
+        self._provider_counters = {}
+        for row in self._rows.values():
+            self._track_voice_code(row)
 
 
 def build_generated_row(
@@ -151,6 +177,42 @@ def build_generated_row(
         "tempo": None,
         "noise_type": None,
         "snr": None,
+        "created_at": datetime.now(UTC).isoformat(),
+        "sha256": sha256,
+    }
+
+
+def build_augmented_row(
+    *,
+    audio_bytes: bytes,
+    filename: str,
+    source_row: dict[str, object],
+    tempo: float,
+    noise_type: str | None,
+    snr: int | None,
+) -> dict[str, object]:
+    sample_rate, channels, duration_ms = probe_wav_bytes(audio_bytes)
+    sha256 = hashlib.sha256(audio_bytes).hexdigest()
+    label = _require_str(source_row, "label")
+    parent_sample_id = _require_str(source_row, "sample_id")
+    sample_id = hashlib.sha256(f"{parent_sample_id}\0{filename}\0{sha256}".encode("utf-8")).hexdigest()
+    return {
+        "sample_id": sample_id,
+        "filename": filename,
+        "label": label,
+        "audio_bytes": audio_bytes,
+        "voice_id": _require_str(source_row, "voice_id"),
+        "voice_code": _require_str(source_row, "voice_code"),
+        "provider": _require_str(source_row, "provider"),
+        "duration_ms": duration_ms,
+        "lang": source_row.get("lang"),
+        "sample_rate": sample_rate,
+        "channels": channels,
+        "source_type": "augmented",
+        "parent_sample_id": parent_sample_id,
+        "tempo": tempo,
+        "noise_type": noise_type,
+        "snr": snr,
         "created_at": datetime.now(UTC).isoformat(),
         "sha256": sha256,
     }

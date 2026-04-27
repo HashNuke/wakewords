@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+import io
 import tempfile
 import unittest
+import wave
 from pathlib import Path
 from unittest import mock
 
 from wakewords.cli import DataTools
+from wakewords.parquet_store import CustomWordStore
 from wakewords.providers.base import Voice
-from wakewords.providers.cartesia import CartesiaProvider
+from wakewords.providers.cartesia import CartesiaProvider, _build_tasks
 
 
 class GenerateVoiceSelectionTests(unittest.TestCase):
@@ -78,6 +81,53 @@ class GenerateCommandTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "custom_words"):
                 DataTools().generate(project_dir=str(project_dir))
 
+    def test_build_tasks_deduplicates_prompt_collisions(self) -> None:
+        voice = Voice(id="voice-1", name="Voice 1", language="en")
+
+        tasks = _build_tasks(
+            prompts=["Hey Astra", "hey-astra"],
+            voices=[voice],
+            voice_codes={voice.id: "cr1"},
+        )
+
+        self.assertEqual(len(tasks), 1)
+        self.assertEqual(tasks[0].word_slug, "hey-astra")
+        self.assertEqual(tasks[0].filename, "heyastra-cr1-t100-clean-nonoise-nosnr.wav")
+
+    def test_cartesia_generate_writes_only_parquet(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            data_dir = project_dir / "data"
+            provider = CartesiaProvider()
+            provider.list_voices = lambda **_: [  # type: ignore[method-assign]
+                Voice(id="voice-1", name="Voice 1", language="en")
+            ]
+
+            with mock.patch("wakewords.providers.cartesia._client", return_value=_FakeCartesiaClient()):
+                outputs = provider.generate(
+                    prompts=["Hey Astra"],
+                    data_dir=data_dir,
+                    parquet_path=data_dir / "custom_words.parquet",
+                    voice=None,
+                    voices=None,
+                    all_voices=False,
+                    lang=None,
+                    concurrency=1,
+                    model_id="sonic-3",
+                    sample_rate=16000,
+                    encoding="pcm_s16le",
+                    overwrite=False,
+                )
+
+            self.assertEqual(outputs, [data_dir / "custom_words.parquet"])
+            self.assertFalse((data_dir / "hey-astra").exists())
+            self.assertFalse((data_dir / "hey-astra" / "manifest.jsonl").exists())
+            rows = CustomWordStore(data_dir / "custom_words.parquet").rows()
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["label"], "hey-astra")
+            self.assertEqual(rows[0]["filename"], "heyastra-cr1-t100-clean-nonoise-nosnr.wav")
+            self.assertIsInstance(rows[0]["audio_bytes"], bytes)
+
 
 class _FakeProvider:
     def __init__(self) -> None:
@@ -90,6 +140,37 @@ class _FakeProvider:
         self.data_dir = kwargs["data_dir"]
         self.parquet_path = kwargs["parquet_path"]
         return []
+
+
+class _FakeCartesiaClient:
+    def __init__(self) -> None:
+        self.tts = self
+
+    def __enter__(self) -> "_FakeCartesiaClient":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+    def generate(self, **kwargs: object) -> "_FakeTtsResponse":
+        return _FakeTtsResponse()
+
+
+class _FakeTtsResponse:
+    def read(self) -> bytes:
+        return _wav_bytes()
+
+
+def _wav_bytes() -> bytes:
+    sample_rate = 16000
+    frame_count = sample_rate // 4
+    with io.BytesIO() as buffer:
+        with wave.open(buffer, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(b"\x00\x00" * frame_count)
+        return buffer.getvalue()
 
 
 if __name__ == "__main__":

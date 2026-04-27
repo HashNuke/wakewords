@@ -1,42 +1,57 @@
 from __future__ import annotations
 
 import json
+import io
 import tempfile
 import unittest
 import wave
 from pathlib import Path
 
 from wakewords.dataset_manifest import build_split_manifests
+from wakewords.parquet_store import CustomWordStore, build_generated_row
 
 
 class DatasetManifestTests(unittest.TestCase):
-    def test_build_split_manifests_writes_project_root_files(self) -> None:
+    def test_build_split_manifests_materializes_custom_words_from_parquet(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_dir = Path(tmp_dir)
-            word_dir = project_dir / "data" / "yes"
-            word_dir.mkdir(parents=True)
-            (word_dir / "manifest.jsonl").write_text(
-                json.dumps({"audio_filepath": "yes.wav", "duration": 1.0, "label": "yes"}) + "\n",
-                encoding="utf-8",
+            data_dir = project_dir / "data"
+            store = CustomWordStore(data_dir / "custom_words.parquet")
+            store.upsert(
+                build_generated_row(
+                    audio_bytes=_wav_bytes(),
+                    filename="yes-cr1-t100-clean-nonoise-nosnr.wav",
+                    label="yes",
+                    voice_id="voice-1",
+                    voice_code="cr1",
+                    provider="cr",
+                    lang="en",
+                ),
+                overwrite=False,
             )
 
             outputs = build_split_manifests(
-                data_dir=project_dir / "data",
+                data_dir=data_dir,
                 train_ratio=1,
                 validate_ratio=0,
                 test_ratio=0,
             )
 
+            row = store.rows()[0]
+            sample_id = row["sample_id"]
+
             self.assertEqual(
                 outputs,
                 {
-                    "train": project_dir / "train_manifest.jsonl",
-                    "validate": project_dir / "validation_manifest.jsonl",
-                    "test": project_dir / "test_manifest.jsonl",
+                    "train": data_dir / "manifests" / "train_manifest.jsonl",
+                    "validate": data_dir / "manifests" / "validation_manifest.jsonl",
+                    "test": data_dir / "manifests" / "test_manifest.jsonl",
                 },
             )
-            self.assertTrue((project_dir / "train_manifest.jsonl").is_file())
-            self.assertFalse((project_dir / "data" / "train_manifest.jsonl").exists())
+            materialized = data_dir / "custom-words" / "yes" / f"{sample_id}.wav"
+            self.assertTrue(materialized.is_file())
+            entries = _read_jsonl(data_dir / "manifests" / "train_manifest.jsonl")
+            self.assertEqual(entries[0]["audio_filepath"], str(materialized.resolve()))
 
     def test_build_split_manifests_includes_configured_google_words_except_background_noise(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -68,7 +83,7 @@ class DatasetManifestTests(unittest.TestCase):
                 test_ratio=0,
             )
 
-            entries = _read_jsonl(project_dir / "train_manifest.jsonl")
+            entries = _read_jsonl(data_dir / "manifests" / "train_manifest.jsonl")
             self.assertEqual(sorted(entry["label"] for entry in entries), ["no", "yes"])
             self.assertEqual(
                 sorted(entry["audio_filepath"] for entry in entries),
@@ -97,7 +112,7 @@ class DatasetManifestTests(unittest.TestCase):
                 test_ratio=0,
             )
 
-            self.assertEqual(_read_jsonl(project_dir / "train_manifest.jsonl"), [])
+            self.assertEqual(_read_jsonl(data_dir / "manifests" / "train_manifest.jsonl"), [])
 
     def test_build_split_manifests_splits_google_words_by_ratio(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -120,12 +135,13 @@ class DatasetManifestTests(unittest.TestCase):
                 test_ratio=10,
             )
 
-            self.assertEqual(len(_read_jsonl(project_dir / "train_manifest.jsonl")), 7)
-            self.assertEqual(len(_read_jsonl(project_dir / "validation_manifest.jsonl")), 2)
-            self.assertEqual(len(_read_jsonl(project_dir / "test_manifest.jsonl")), 1)
-            self.assertEqual(_manifest_basenames(project_dir / "train_manifest.jsonl"), [f"sample-{index}.wav" for index in range(7)])
-            self.assertEqual(_manifest_basenames(project_dir / "validation_manifest.jsonl"), ["sample-7.wav", "sample-8.wav"])
-            self.assertEqual(_manifest_basenames(project_dir / "test_manifest.jsonl"), ["sample-9.wav"])
+            manifests_dir = data_dir / "manifests"
+            self.assertEqual(len(_read_jsonl(manifests_dir / "train_manifest.jsonl")), 7)
+            self.assertEqual(len(_read_jsonl(manifests_dir / "validation_manifest.jsonl")), 2)
+            self.assertEqual(len(_read_jsonl(manifests_dir / "test_manifest.jsonl")), 1)
+            self.assertEqual(_manifest_basenames(manifests_dir / "train_manifest.jsonl"), [f"sample-{index}.wav" for index in range(7)])
+            self.assertEqual(_manifest_basenames(manifests_dir / "validation_manifest.jsonl"), ["sample-7.wav", "sample-8.wav"])
+            self.assertEqual(_manifest_basenames(manifests_dir / "test_manifest.jsonl"), ["sample-9.wav"])
 
     def test_build_split_manifests_splits_google_words_independent_of_project_path(self) -> None:
         with tempfile.TemporaryDirectory() as first_tmp_dir:
@@ -150,9 +166,21 @@ class DatasetManifestTests(unittest.TestCase):
 
                 for manifest_name in ("train_manifest.jsonl", "validation_manifest.jsonl", "test_manifest.jsonl"):
                     self.assertEqual(
-                        _manifest_basenames(first_project_dir / manifest_name),
-                        _manifest_basenames(second_project_dir / manifest_name),
+                        _manifest_basenames(first_project_dir / "data" / "manifests" / manifest_name),
+                        _manifest_basenames(second_project_dir / "data" / "manifests" / manifest_name),
                     )
+
+
+def _wav_bytes(*, duration_ms: int = 250) -> bytes:
+    sample_rate = 16000
+    frame_count = sample_rate * duration_ms // 1000
+    with io.BytesIO() as buffer:
+        with wave.open(buffer, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(b"\x00\x00" * frame_count)
+        return buffer.getvalue()
 
 
 def _write_wav(path: Path) -> None:

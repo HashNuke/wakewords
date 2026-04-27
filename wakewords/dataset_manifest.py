@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
 from wakewords.download import GOOGLE_SPEECH_COMMANDS_DIR
-from wakewords.manifest import load_word_manifest_entries
 from wakewords.manifest import probe_wav_duration
+from wakewords.parquet_store import CustomWordStore
 
 
 def build_split_manifests(
@@ -30,6 +31,7 @@ def build_split_manifests(
     if sum(ratios.values()) <= 0:
         raise ValueError("At least one split ratio must be > 0.")
 
+    data_dir.mkdir(parents=True, exist_ok=True)
     grouped_entries = _load_grouped_entries(data_dir=data_dir, google_data_dir=google_data_dir)
     split_entries = {"train": [], "validate": [], "test": []}
 
@@ -43,9 +45,9 @@ def build_split_manifests(
             start = end
 
     output_paths = {
-        "train": data_dir.parent / train_filename,
-        "validate": data_dir.parent / validate_filename,
-        "test": data_dir.parent / test_filename,
+        "train": data_dir / "manifests" / train_filename,
+        "validate": data_dir / "manifests" / validate_filename,
+        "test": data_dir / "manifests" / test_filename,
     }
     for split_name, output_path in output_paths.items():
         _write_manifest(output_path, split_entries[split_name])
@@ -54,19 +56,58 @@ def build_split_manifests(
 
 def _load_grouped_entries(*, data_dir: Path, google_data_dir: Path | None) -> dict[str, list[dict[str, object]]]:
     grouped: dict[str, list[dict[str, object]]] = {}
-    for word_dir in sorted(path for path in data_dir.iterdir() if path.is_dir() and path.name != "_noises_"):
-        for entry in load_word_manifest_entries(word_dir):
-            label = entry.get("label")
-            if not isinstance(label, str):
-                continue
-            grouped.setdefault(label, []).append(entry)
+    for entry in _materialize_custom_word_entries(data_dir):
+        grouped.setdefault(str(entry["label"]), []).append(entry)
 
     configured_google_words = _load_configured_google_words(data_dir.parent / "config.json")
-    speech_commands_dir = google_data_dir or data_dir.parent / GOOGLE_SPEECH_COMMANDS_DIR
+    speech_commands_dir = google_data_dir or _default_google_speech_commands_dir(data_dir)
     if configured_google_words and speech_commands_dir.exists():
         for entry in _load_google_speech_command_entries(speech_commands_dir, configured_google_words):
             grouped.setdefault(str(entry["label"]), []).append(entry)
     return grouped
+
+
+def _materialize_custom_word_entries(data_dir: Path) -> list[dict[str, object]]:
+    parquet_path = data_dir / "custom_words.parquet"
+    materialized_dir = data_dir / "custom-words"
+    if materialized_dir.exists():
+        shutil.rmtree(materialized_dir)
+    if not parquet_path.exists():
+        return []
+
+    rows = CustomWordStore(parquet_path).rows()
+
+    entries: list[dict[str, object]] = []
+    for row in rows:
+        label = row.get("label")
+        sample_id = row.get("sample_id")
+        audio_bytes = row.get("audio_bytes")
+        duration_ms = row.get("duration_ms")
+        if not isinstance(label, str) or not isinstance(sample_id, str):
+            continue
+        if not isinstance(audio_bytes, bytes) or not isinstance(duration_ms, int):
+            continue
+        materialized_name = f"{sample_id}.wav"
+        audio_path = materialized_dir / label / materialized_name
+        audio_path.parent.mkdir(parents=True, exist_ok=True)
+        audio_path.write_bytes(audio_bytes)
+        entries.append(
+            {
+                "audio_filepath": str(audio_path.resolve()),
+                "duration": duration_ms / 1000,
+                "duration_ms": duration_ms,
+                "label": label,
+                "split_key": f"custom-words/{label}/{materialized_name}",
+            }
+        )
+    return entries
+
+
+def _default_google_speech_commands_dir(data_dir: Path) -> Path:
+    data_scoped_dir = data_dir / GOOGLE_SPEECH_COMMANDS_DIR
+    if data_scoped_dir.exists():
+        return data_scoped_dir
+    return data_dir.parent / GOOGLE_SPEECH_COMMANDS_DIR
 
 
 def _load_configured_google_words(config_path: Path) -> list[str]:
@@ -132,6 +173,7 @@ def _split_order(name: str) -> int:
 
 
 def _write_manifest(path: Path, entries: list[dict[str, object]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     lines = []
     for entry in entries:
         lines.append(
