@@ -67,13 +67,8 @@ def _load_grouped_entries(*, data_dir: Path, google_data_dir: Path | None) -> di
 
     configured_google_words = _load_configured_google_words(data_dir.parent / "config.json")
     speech_commands_dir = google_data_dir or _default_google_speech_commands_dir(data_dir)
-    if configured_google_words and speech_commands_dir.exists():
-        google_audio_paths = [
-            audio_path
-            for word in configured_google_words
-            if word != "_background_noise_"
-            for audio_path in sorted((speech_commands_dir / word).glob("*.wav"))
-        ]
+    if configured_google_words:
+        google_audio_paths = _configured_google_audio_paths(speech_commands_dir, configured_google_words)
         require_materialized_files(
             google_audio_paths,
             context="building manifests from Google Speech Commands",
@@ -121,10 +116,30 @@ def _materialize_custom_word_entries(data_dir: Path) -> list[dict[str, object]]:
 
 
 def _default_google_speech_commands_dir(data_dir: Path) -> Path:
-    data_scoped_dir = data_dir / GOOGLE_SPEECH_COMMANDS_DIR
-    if data_scoped_dir.exists():
-        return data_scoped_dir
     return data_dir.parent / GOOGLE_SPEECH_COMMANDS_DIR
+
+
+def _configured_google_audio_paths(dataset_dir: Path, words: list[str]) -> list[Path]:
+    if not dataset_dir.is_dir():
+        raise FileNotFoundError(
+            f"Missing Google Speech Commands directory: {dataset_dir}. "
+            f"Run `wakewords download` or place the dataset at {GOOGLE_SPEECH_COMMANDS_DIR}/ in the project root."
+        )
+
+    audio_paths: list[Path] = []
+    missing_words: list[str] = []
+    for word in words:
+        if word == "_background_noise_":
+            continue
+        word_paths = sorted((dataset_dir / word).glob("*.wav"))
+        if not word_paths:
+            missing_words.append(word)
+            continue
+        audio_paths.extend(word_paths)
+    if missing_words:
+        missing = ", ".join(missing_words)
+        raise FileNotFoundError(f"Missing Google Speech Commands WAV files for configured words: {missing}")
+    return audio_paths
 
 
 def _load_configured_google_words(config_path: Path) -> list[str]:

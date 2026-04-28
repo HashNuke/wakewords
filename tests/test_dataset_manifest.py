@@ -114,6 +114,65 @@ class DatasetManifestTests(unittest.TestCase):
 
             self.assertEqual(_read_jsonl(data_dir / "manifests" / "train_manifest.jsonl"), [])
 
+    def test_build_split_manifests_requires_project_root_google_dataset_when_configured(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            (project_dir / "config.json").write_text(
+                json.dumps({"google_speech_commands": ["yes"]}) + "\n",
+                encoding="utf-8",
+            )
+            data_dir = project_dir / "data"
+            data_dir.mkdir()
+
+            with self.assertRaisesRegex(FileNotFoundError, "Missing Google Speech Commands directory"):
+                build_split_manifests(
+                    data_dir=data_dir,
+                    train_ratio=1,
+                    validate_ratio=0,
+                    test_ratio=0,
+                )
+
+    def test_build_split_manifests_ignores_data_scoped_google_dataset(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            (project_dir / "config.json").write_text(
+                json.dumps({"google_speech_commands": ["yes"]}) + "\n",
+                encoding="utf-8",
+            )
+            data_dir = project_dir / "data"
+            yes_dir = data_dir / "google-speech-commands" / "yes"
+            yes_dir.mkdir(parents=True)
+            _write_wav(yes_dir / "sample.wav")
+
+            with self.assertRaisesRegex(FileNotFoundError, "Missing Google Speech Commands directory"):
+                build_split_manifests(
+                    data_dir=data_dir,
+                    train_ratio=1,
+                    validate_ratio=0,
+                    test_ratio=0,
+                )
+
+    def test_build_split_manifests_requires_wavs_for_configured_google_words(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            (project_dir / "config.json").write_text(
+                json.dumps({"google_speech_commands": ["yes", "no"]}) + "\n",
+                encoding="utf-8",
+            )
+            data_dir = project_dir / "data"
+            data_dir.mkdir()
+            yes_dir = project_dir / "google-speech-commands" / "yes"
+            yes_dir.mkdir(parents=True)
+            _write_wav(yes_dir / "sample.wav")
+
+            with self.assertRaisesRegex(FileNotFoundError, "Missing Google Speech Commands WAV files.*no"):
+                build_split_manifests(
+                    data_dir=data_dir,
+                    train_ratio=1,
+                    validate_ratio=0,
+                    test_ratio=0,
+                )
+
     def test_build_split_manifests_splits_google_words_by_ratio(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_dir = Path(tmp_dir)
