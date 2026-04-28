@@ -18,6 +18,7 @@ import { Wakewords as NodeWakewords } from "wakewords/node";
 - `wakewords` exports inference-only APIs and resolves to the best runtime entrypoint through package exports.
 - `wakewords/browser` exports browser inference plus `WakewordsListener` and `createListener()`.
 - `wakewords/node` exports Node.js inference with local filesystem support for model and label paths.
+- `wakewords/model.onnx` and `wakewords/labels.json` expose the bundled default assets for tooling that needs direct asset paths.
 
 ## Load Model
 
@@ -28,6 +29,8 @@ import { Wakewords } from "wakewords";
 
 const wakewords = await Wakewords.load();
 ```
+
+The default model and labels are shipped in the npm package. In Node.js they are loaded from package files. In browser builds they are referenced with `new URL(..., import.meta.url)` so bundlers can emit them as static assets.
 
 Pass custom model and label locations when you want to use your own trained model.
 
@@ -68,6 +71,17 @@ const wakewords = await Wakewords.load({
   labels: ["hey_computer", "background"],
 });
 ```
+
+## Bundled Assets
+
+Most apps should call `Wakewords.load()` and let the library resolve the bundled assets. If tooling needs direct access to the files, use the exported package subpaths:
+
+```ts
+const modelUrl = import.meta.resolve("wakewords/model.onnx");
+const labelsUrl = import.meta.resolve("wakewords/labels.json");
+```
+
+The direct asset exports are primarily for build tooling and diagnostics. They are not required for normal inference.
 
 ## One-Time Inference
 

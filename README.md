@@ -100,6 +100,18 @@ uv run wakewords train --from-checkpoint models/last_checkpoint/last.ckpt
 That imports the checkpoint into a new `runs/<run-name>/` directory before
 training continues.
 
+### JavaScript Inference
+
+The `wakewords` npm package ships with a default ONNX model and labels so you can try inference without training first:
+
+```js
+import { Wakewords } from "wakewords";
+
+const wakewords = await Wakewords.load();
+```
+
+Use `wakewords/browser` for browser microphone listening and `wakewords/node` for Node.js inference with filesystem paths. See [`docs/javascript-api.md`](docs/javascript-api.md).
+
 ### Find Outputs
 
 Training artifacts are written under `runs/<run-name>/`:
