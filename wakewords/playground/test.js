@@ -74,6 +74,7 @@ async function loop() {
       }
     } catch (error) {
       console.log("wakewords inference error", error);
+      statusEl.textContent = error.message;
     }
   }
 }
