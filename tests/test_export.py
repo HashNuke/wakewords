@@ -42,7 +42,7 @@ class ExportTests(unittest.TestCase):
             self.assertEqual((output_dir / "model.onnx").read_text(encoding="utf-8"), "onnx")
             self.assertEqual((output_dir / "last_checkpoint" / "last.ckpt").read_text(encoding="utf-8"), "checkpoint")
             self.assertEqual(json.loads((output_dir / "last_checkpoint" / "train_config.json").read_text(encoding="utf-8")), {"labels": ["yes", "unknown"]})
-            self.assertEqual(json.loads((output_dir / "labels.json").read_text(encoding="utf-8")), ["yes", "unknown"])
+            self.assertEqual(json.loads((output_dir / "labels.json").read_text(encoding="utf-8")), ["unknown", "yes"])
 
             export_config = json.loads((output_dir / "export_config.json").read_text(encoding="utf-8"))
             self.assertEqual(export_config["format"], "onnx")

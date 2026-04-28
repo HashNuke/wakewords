@@ -209,7 +209,7 @@ def _load_labels(train_config_path: Path | None) -> list[str] | None:
     labels = config.get("labels")
     if not isinstance(labels, list) or not all(isinstance(label, str) for label in labels):
         return None
-    return labels
+    return sorted(labels)
 
 
 def _export_onnx(source_model_path: Path, destination_model_path: Path) -> None:
