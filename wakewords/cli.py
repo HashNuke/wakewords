@@ -232,7 +232,7 @@ class DataTools:
         train_manifest: str = "data/manifests/train_manifest.jsonl",
         validation_manifest: str = "data/manifests/validation_manifest.jsonl",
         test_manifest: str = "data/manifests/test_manifest.jsonl",
-        max_epochs: int = 10,
+        max_epochs: int = 15,
         batch_size: int = 32,
         num_workers: int = 4,
         accelerator: str = "auto",
