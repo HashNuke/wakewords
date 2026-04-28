@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>wakewords demo</title>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/">wakewords</a>
+      </header>
+
+      <section class="controls setup-controls">
+        <label class="field">
+          <span>Model URL</span>
+          <input id="modelUrl" type="text" value="/model.onnx" spellcheck="false" />
+        </label>
+        <label class="field">
+          <span>Labels URL</span>
+          <input id="labelsUrl" type="text" value="/labels.json" spellcheck="false" />
+        </label>
+        <button id="loadModel" type="button">Load model</button>
+      </section>
+
+      <section class="controls">
+        <button id="enableMic" type="button" disabled>Enable mic</button>
+        <label class="threshold-control">
+          Threshold
+          <input id="threshold" type="range" min="0" max="100" value="90" />
+          <span id="thresholdValue">90%</span>
+        </label>
+        <div id="status" class="status">load a model to begin</div>
+      </section>
+
+      <section id="labelGrid" class="grid" aria-live="polite"></section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

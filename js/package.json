@@ -12,7 +12,7 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "node ./tests/preprocessing.test.mjs"
+    "test": "node ./tests/preprocessing.test.mjs && node ./tests/inference.test.mjs"
   },
   "dependencies": {
     "onnxruntime-web": "^1.22.0"
