@@ -1,0 +1,23 @@
+{
+  "name": "wakewords",
+  "version": "0.1.0",
+  "description": "Detect wakewords in the browser",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HashNuke/wakewords.git"
+  },
+  "author": "Akash Manohar John",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/HashNuke/wakewords/issues"
+  },
+  "homepage": "https://github.com/HashNuke/wakewords#readme"
+}
