@@ -3,20 +3,26 @@ import { createWindowSampler, enableMic, inferWav, loadLabelMetadata } from "./a
 const enableButton = document.querySelector("#enableMic");
 const statusEl = document.querySelector("#status");
 const gridEl = document.querySelector("#labelGrid");
+const thresholdInput = document.querySelector("#threshold");
+const thresholdValue = document.querySelector("#thresholdValue");
 const lamps = new Map();
 
 let sampler = null;
 let running = false;
 let googleSpeechCommands = new Set();
+let customWordLabels = new Set();
+let threshold = Number(thresholdInput.value) / 100;
+let googleSpeechReset = null;
 
 loadLabelMetadata()
   .then((metadata) => {
     googleSpeechCommands = new Set(metadata.google_speech_commands || []);
     const customLabels = metadata.custom || [];
+    customWordLabels = new Set(customLabels);
     const otherLabels = metadata.other || [];
     const lampsToShow = [...customLabels, ...otherLabels].map((label) => createLamp(label));
     if (googleSpeechCommands.size > 0) {
-      lampsToShow.push(createLamp("google speech", { key: "google-speech", className: "google-lamp" }));
+      lampsToShow.push(createLamp("....", { key: "google-speech", className: "google-lamp" }));
     }
     gridEl.replaceChildren(...lampsToShow);
   })
@@ -38,6 +44,11 @@ enableButton.addEventListener("click", async () => {
   }
 });
 
+thresholdInput.addEventListener("input", () => {
+  threshold = Number(thresholdInput.value) / 100;
+  thresholdValue.textContent = `${thresholdInput.value}%`;
+});
+
 function createLamp(label, options = {}) {
   const element = document.createElement("div");
   element.className = options.className ? `lamp ${options.className}` : "lamp";
@@ -54,8 +65,8 @@ async function loop() {
     try {
       const result = await inferWav(sampler.wav());
       console.log("wakewords inference", result);
-      if (result.probability >= 0.7) {
-        if (googleSpeechCommands.has(result.label)) {
+      if (result.probability >= threshold) {
+        if (googleSpeechCommands.has(result.label) && !customWordLabels.has(result.label)) {
           activate("google-speech", result.label);
         } else {
           activate(result.label);
@@ -74,8 +85,19 @@ function activate(key, label = key) {
   lamp.classList.remove("active");
   window.requestAnimationFrame(() => {
     lamp.classList.add("active");
-    window.setTimeout(() => lamp.classList.remove("active"), 120);
+    window.setTimeout(() => {
+      lamp.classList.remove("active");
+      if (key === "google-speech") resetGoogleSpeechLamp();
+    }, 120);
   });
+}
+
+function resetGoogleSpeechLamp() {
+  window.clearTimeout(googleSpeechReset);
+  googleSpeechReset = window.setTimeout(() => {
+    const lamp = lamps.get("google-speech");
+    if (lamp && !lamp.classList.contains("active")) lamp.textContent = "....";
+  }, 2000);
 }
 
 function sleep(ms) {

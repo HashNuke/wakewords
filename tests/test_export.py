@@ -106,6 +106,37 @@ class ExportTests(unittest.TestCase):
                 ],
             )
 
+    def test_cli_export_overwrites_existing_bundle_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir).resolve()
+            _create_run(project_dir, "cli-run")
+            output_dir = project_dir / "models"
+            checkpoint_dir = output_dir / "last_checkpoint"
+            checkpoint_dir.mkdir(parents=True)
+            (output_dir / "model.onnx").write_text("old onnx", encoding="utf-8")
+            (checkpoint_dir / "last.ckpt").write_text("old checkpoint", encoding="utf-8")
+            (checkpoint_dir / "train_config.json").write_text("{}\n", encoding="utf-8")
+            (output_dir / "labels.json").write_text("[]\n", encoding="utf-8")
+            (output_dir / "export_config.json").write_text("{}\n", encoding="utf-8")
+            argv = [
+                "wakewords",
+                "export",
+                "--project-dir",
+                tmp_dir,
+            ]
+
+            with mock.patch.object(cli.sys, "argv", argv):
+                with mock.patch("wakewords.export._export_onnx", side_effect=_fake_export_onnx):
+                    with redirect_stdout(io.StringIO()):
+                        cli.main()
+
+            self.assertEqual((output_dir / "model.onnx").read_text(encoding="utf-8"), "onnx")
+            self.assertEqual((checkpoint_dir / "last.ckpt").read_text(encoding="utf-8"), "checkpoint")
+            self.assertEqual(
+                json.loads((checkpoint_dir / "train_config.json").read_text(encoding="utf-8")),
+                {"labels": ["yes", "unknown"]},
+            )
+
     def test_cli_serve_starts_playground(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             argv = [

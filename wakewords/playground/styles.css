@@ -43,7 +43,8 @@ a {
 }
 
 button,
-select {
+select,
+input[type="range"] {
   border: 1px solid var(--line);
   border-radius: 0;
   background: #000;
@@ -113,6 +114,28 @@ select {
   color: var(--muted);
   min-height: 22px;
   font-size: 14px;
+}
+
+.threshold-control {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  background: #000;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.threshold-control input {
+  width: 160px;
+  accent-color: var(--neon);
+}
+
+.threshold-control span {
+  min-width: 4ch;
+  color: var(--fg);
 }
 
 .grid {
@@ -216,10 +239,15 @@ select {
   }
 
   button,
-  select {
+  select,
+  .threshold-control {
     min-height: 34px;
     padding: 0 10px;
     font-size: 13px;
+  }
+
+  .threshold-control input {
+    width: 110px;
   }
 
   .status {

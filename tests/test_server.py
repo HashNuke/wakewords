@@ -14,11 +14,13 @@ from wakewords.export import ExportBundle
 from wakewords.server import (
     OnnxWakewordModel,
     ServeConfig,
+    _audio_input,
     _existing_export_bundle,
     _labels_metadata,
     _next_diagnostic_path,
     _probabilities,
     _read_wav_as_float32_mono,
+    _shape_audio_signal,
     serve_playground,
 )
 
@@ -59,7 +61,7 @@ class ServerTests(unittest.TestCase):
             self.assertIsInstance(create_app.call_args.kwargs["config"], ServeConfig)
             uvicorn_run.assert_called_once()
 
-    def test_serve_reuses_existing_model_onnx(self) -> None:
+    def test_serve_exports_even_when_existing_model_onnx_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_dir = Path(tmp_dir)
             output_dir = project_dir / "models"
@@ -70,7 +72,7 @@ class ServerTests(unittest.TestCase):
             uvicorn_run = mock.Mock()
             with (
                 mock.patch.dict(sys.modules, {"uvicorn": SimpleNamespace(run=uvicorn_run)}),
-                mock.patch("wakewords.server.export_model") as export_model,
+                mock.patch("wakewords.server.export_model", return_value=bundle) as export_model,
                 mock.patch("wakewords.server.create_app", return_value=object()) as create_app,
             ):
                 serve_playground(
@@ -82,7 +84,7 @@ class ServerTests(unittest.TestCase):
                     open_browser=False,
                 )
 
-            export_model.assert_not_called()
+            export_model.assert_called_once()
             bundle = create_app.call_args.kwargs["bundle"]
             self.assertEqual(bundle.model_path, output_dir / "model.onnx")
             self.assertEqual(bundle.labels_path, output_dir / "labels.json")
@@ -116,7 +118,8 @@ class ServerTests(unittest.TestCase):
             model_path.write_bytes(b"onnx")
             labels_path.write_text(json.dumps(["yes", "no"]) + "\n", encoding="utf-8")
 
-            fake_ort = SimpleNamespace(InferenceSession=mock.Mock(return_value=_FakeSession()))
+            session = _FakeSession()
+            fake_ort = SimpleNamespace(InferenceSession=mock.Mock(return_value=session))
             with mock.patch.dict(sys.modules, {"onnxruntime": fake_ort}):
                 model = OnnxWakewordModel(model_path=model_path, labels_path=labels_path)
 
@@ -125,6 +128,7 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(result["label"], "no")
             self.assertGreater(result["probability"], 0.5)
             self.assertEqual(set(result["probabilities"]), {"yes", "no"})
+            self.assertEqual(session.audio_shape, (1, 1600))
 
     def test_probabilities_preserves_normalized_output(self) -> None:
         probabilities = _probabilities([[0.8, 0.2]])
@@ -132,7 +136,26 @@ class ServerTests(unittest.TestCase):
         self.assertAlmostEqual(probabilities[0], 0.8)
         self.assertAlmostEqual(probabilities[1], 0.2)
 
-    def test_labels_metadata_groups_custom_and_google_speech_commands(self) -> None:
+    def test_shape_audio_signal_uses_model_input_rank(self) -> None:
+        import numpy as np
+
+        signal = np.asarray([0.1, 0.2, 0.3], dtype=np.float32)
+
+        self.assertEqual(_shape_audio_signal(signal, shape=[3]).shape, (3,))
+        self.assertEqual(_shape_audio_signal(signal, shape=[1, 3]).shape, (1, 3))
+        self.assertEqual(_shape_audio_signal(signal, shape=[1, 1, 3]).shape, (1, 1, 3))
+
+    def test_audio_input_uses_nemo_mfcc_for_feature_model(self) -> None:
+        import numpy as np
+
+        features = np.zeros((64, 101), dtype=np.float32)
+        with mock.patch("wakewords.server._nemo_mfcc_features", return_value=features) as mfcc:
+            audio_input = _audio_input(np.zeros(16000, dtype=np.float32), shape=[1, 64, "time"])
+
+        mfcc.assert_called_once()
+        self.assertEqual(audio_input.shape, (64, 101))
+
+    def test_labels_metadata_groups_model_labels_by_project_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_dir = Path(tmp_dir)
             (project_dir / "config.json").write_text(
@@ -152,18 +175,33 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(metadata["google_speech_commands"], ["yes"])
             self.assertEqual(metadata["other"], ["unknown"])
 
+    def test_labels_metadata_omits_configured_custom_words_missing_from_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            (project_dir / "config.json").write_text(
+                json.dumps({"custom_words": [{"tts_input": "New Word", "label": "new_word"}]}) + "\n",
+                encoding="utf-8",
+            )
+
+            metadata = _labels_metadata(project_dir=project_dir, model_labels=["old_word"])
+
+            self.assertEqual(metadata["custom"], [])
+            self.assertEqual(metadata["other"], ["old_word"])
+
 
 class _Input:
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, shape: list[int | str] | None = None) -> None:
         self.name = name
+        self.shape = shape or []
 
 
 class _FakeSession:
     def get_inputs(self) -> list[_Input]:
-        return [_Input("audio_signal"), _Input("length")]
+        return [_Input("audio_signal", [1, "time"]), _Input("length", [1])]
 
     def run(self, _: object, feeds: dict[str, object]) -> list[list[list[float]]]:
         self.feeds = feeds
+        self.audio_shape = feeds["audio_signal"].shape
         return [[[0.1, 2.0]]]
 
 

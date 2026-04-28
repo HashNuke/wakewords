@@ -277,7 +277,7 @@ class DataTools:
         model_path: str | None = None,
         checkpoint_path: str | None = None,
         output_dir: str = "models",
-        overwrite: bool = False,
+        overwrite: bool = True,
         verbose: bool = False,
     ) -> None:
         """Export a trained model into a project-level deployable model bundle."""

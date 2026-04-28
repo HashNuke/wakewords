@@ -50,18 +50,16 @@ def serve_playground(
         port=port,
         open_browser=open_browser,
     )
-    bundle = _existing_export_bundle(project_dir=config.project_dir, output_dir=config.output_dir)
-    if bundle is None:
-        bundle = export_model(
-            project_dir=config.project_dir,
-            runs_dir=config.runs_dir,
-            run_dir=None,
-            model_path=None,
-            checkpoint_path=None,
-            output_dir=config.output_dir,
-            format="onnx",
-            overwrite=True,
-        )
+    bundle = export_model(
+        project_dir=config.project_dir,
+        runs_dir=config.runs_dir,
+        run_dir=None,
+        model_path=None,
+        checkpoint_path=None,
+        output_dir=config.output_dir,
+        format="onnx",
+        overwrite=True,
+    )
     app = create_app(config=config, bundle=bundle)
     if open_browser:
         threading.Timer(0.75, lambda: webbrowser.open(f"http://{host}:{port}/")).start()
@@ -169,7 +167,7 @@ class OnnxWakewordModel:
         if not model_path.is_file():
             raise FileNotFoundError(f"Missing ONNX model: {model_path}")
         self._session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
-        self._input_names = [input_meta.name for input_meta in self._session.get_inputs()]
+        self._input_shapes = {input_meta.name: list(input_meta.shape or []) for input_meta in self._session.get_inputs()}
         self.labels = _load_labels(labels_path)
 
     def predict(self, audio_bytes: bytes) -> dict[str, Any]:
@@ -192,20 +190,82 @@ class OnnxWakewordModel:
     def _feeds(self, samples: Any) -> dict[str, Any]:
         import numpy as np
 
-        signal = np.asarray(samples, dtype=np.float32)[None, :]
-        length = np.asarray([signal.shape[1]], dtype=np.int64)
+        waveform = np.asarray(samples, dtype=np.float32)
         feeds: dict[str, Any] = {}
-        for name in self._input_names:
+        for name, shape in self._input_shapes.items():
             normalized = name.lower()
             if "length" in normalized:
-                feeds[name] = length
-            elif "audio" in normalized or "signal" in normalized or len(self._input_names) == 1:
-                feeds[name] = signal
+                feeds[name] = np.asarray([_feature_length(waveform, self._input_shapes)], dtype=np.int64)
+            elif "audio" in normalized or "signal" in normalized or len(self._input_shapes) == 1:
+                feeds[name] = _shape_audio_signal(_audio_input(waveform, shape=shape), shape=shape)
             else:
                 raise ValueError(
                     f"Unsupported ONNX input {name!r}. Expected audio/signal and optional length inputs."
                 )
         return feeds
+
+
+def _audio_input(waveform: Any, *, shape: list[Any]) -> Any:
+    if _expects_mfcc_features(shape):
+        return _nemo_mfcc_features(waveform)
+    return waveform
+
+
+def _expects_mfcc_features(shape: list[Any]) -> bool:
+    return len(shape) == 3 and shape[1] == 64
+
+
+def _feature_length(waveform: Any, input_shapes: dict[str, list[Any]]) -> int:
+    if any(_expects_mfcc_features(shape) for shape in input_shapes.values()):
+        return _nemo_mfcc_features(waveform).shape[-1]
+    return int(waveform.shape[0])
+
+
+def _shape_audio_signal(signal: Any, *, shape: list[Any]) -> Any:
+    rank = len(shape)
+    if rank == 0:
+        rank = 2
+    if rank == 1:
+        return signal
+    if rank == 2:
+        return signal[None, :]
+    if rank == 3:
+        if len(signal.shape) == 2:
+            return signal[None, :, :]
+        return signal[None, None, :]
+    raise ValueError(f"Unsupported ONNX audio input rank {rank}. Expected rank 1, 2, or 3.")
+
+
+def _nemo_mfcc_features(waveform: Any) -> Any:
+    import numpy as np
+    import torch
+    from nemo.collections.asr.modules.audio_preprocessing import AudioToMFCCPreprocessor
+
+    preprocessor = _nemo_mfcc_preprocessor()
+    signal = torch.as_tensor(np.asarray(waveform, dtype=np.float32), dtype=torch.float32).unsqueeze(0)
+    length = torch.as_tensor([signal.shape[1]], dtype=torch.long)
+    with torch.no_grad():
+        features, _ = preprocessor(input_signal=signal, length=length)
+    return features.squeeze(0).cpu().numpy().astype(np.float32)
+
+
+def _nemo_mfcc_preprocessor() -> Any:
+    if not hasattr(_nemo_mfcc_preprocessor, "_instance"):
+        from nemo.collections.asr.modules.audio_preprocessing import AudioToMFCCPreprocessor
+
+        preprocessor = AudioToMFCCPreprocessor(
+            sample_rate=SAMPLE_RATE,
+            window_size=0.025,
+            window_stride=0.01,
+            window="hann",
+            n_fft=512,
+            n_mels=64,
+            n_mfcc=64,
+            log=True,
+        )
+        preprocessor.eval()
+        _nemo_mfcc_preprocessor._instance = preprocessor
+    return _nemo_mfcc_preprocessor._instance
 
 
 def _read_asset(name: str) -> str:
@@ -223,8 +283,8 @@ def _load_labels(labels_path: Path | None) -> list[str]:
 
 def _labels_metadata(*, project_dir: Path, model_labels: list[str]) -> dict[str, list[str]]:
     configured_custom, configured_google = _configured_label_groups(project_dir / "config.json")
-    custom = [label for label in model_labels if label in configured_custom]
-    google = [label for label in model_labels if label in configured_google]
+    custom = [label for label in model_labels if label in set(configured_custom)]
+    google = [label for label in model_labels if label in set(configured_google)]
     grouped = set(custom) | set(google)
     other = [label for label in model_labels if label not in grouped]
     return {
@@ -235,32 +295,37 @@ def _labels_metadata(*, project_dir: Path, model_labels: list[str]) -> dict[str,
     }
 
 
-def _configured_label_groups(config_path: Path) -> tuple[set[str], set[str]]:
+def _configured_label_groups(config_path: Path) -> tuple[list[str], list[str]]:
     if not config_path.is_file():
-        return set(), set()
+        return [], []
     config = json.loads(config_path.read_text(encoding="utf-8"))
-    return _custom_word_labels(config.get("custom_words")), _string_set(config.get("google_speech_commands"))
+    return _custom_word_labels(config.get("custom_words")), _string_list(config.get("google_speech_commands"))
 
 
-def _custom_word_labels(custom_words: object) -> set[str]:
-    labels: set[str] = set()
+def _custom_word_labels(custom_words: object) -> list[str]:
+    labels: list[str] = []
     if not isinstance(custom_words, list):
         return labels
     for word in custom_words:
         if isinstance(word, str) and word:
-            labels.add(word)
+            if word not in labels:
+                labels.append(word)
             continue
         if isinstance(word, dict):
             label = word.get("label")
-            if isinstance(label, str) and label:
-                labels.add(label)
+            if isinstance(label, str) and label and label not in labels:
+                labels.append(label)
     return labels
 
 
-def _string_set(values: object) -> set[str]:
+def _string_list(values: object) -> list[str]:
     if not isinstance(values, list):
-        return set()
-    return {value for value in values if isinstance(value, str) and value}
+        return []
+    labels: list[str] = []
+    for value in values:
+        if isinstance(value, str) and value and value not in labels:
+            labels.append(value)
+    return labels
 
 
 def _read_wav_as_float32_mono(audio_bytes: bytes, *, target_sample_rate: int) -> list[float]:
