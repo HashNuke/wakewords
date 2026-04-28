@@ -102,6 +102,12 @@ def create_app(*, config: ServeConfig, bundle: ExportBundle) -> Any:
     inference_cache: dict[str, OnnxWakewordModel] = {}
     static_dir = resources.files("wakewords.playground")
 
+    @app.middleware("http")
+    async def no_cache_playground_assets(request: Any, call_next: Any) -> Any:
+        response = await call_next(request)
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
     with resources.as_file(static_dir) as playground_dir:
         app.mount("/static", StaticFiles(directory=str(playground_dir)), name="static")
 
