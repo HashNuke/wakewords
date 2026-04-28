@@ -55,6 +55,16 @@ export async function loadLabelMetadata() {
 }
 
 export async function inferWav(wavBlob) {
+  const form = new FormData();
+  form.append("audio", wavBlob, "sample.wav");
+  const response = await fetch("/api/infer", { method: "POST", body: form });
+  if (!response.ok) {
+    throw new Error(`inference failed: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function inferWavInBrowser(wavBlob) {
   const [{ session, labels }, samples] = await Promise.all([loadModel(), decodeWav(wavBlob)]);
   const feeds = buildFeeds(session, samples);
   const outputs = await session.run(feeds);

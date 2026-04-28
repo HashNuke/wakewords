@@ -95,6 +95,7 @@ def create_app(*, config: ServeConfig, bundle: ExportBundle) -> Any:
         from fastapi.staticfiles import StaticFiles
     except ImportError as exc:
         raise RuntimeError("FastAPI is not installed. Install wakewords with serve dependencies.") from exc
+    globals()["UploadFile"] = UploadFile
 
     app = FastAPI(title="wakewords playground")
     model_labels = _load_labels(bundle.labels_path)
