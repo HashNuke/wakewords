@@ -8,7 +8,7 @@ export function createWakewordsClass(runtime) {
   return class Wakewords {
     static async load(options = {}) {
       const resolved = await resolveLoadOptions(runtime, options);
-      return new Wakewords(resolved);
+      return new this(resolved);
     }
 
     constructor(options) {

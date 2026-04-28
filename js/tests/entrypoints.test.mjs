@@ -23,6 +23,9 @@ assert.equal("WakewordsListener" in packageNode, false, "node entry should not e
 assert.equal("Wakewords" in packageBrowser, true, "browser entry exports Wakewords");
 assert.equal("WakewordsListener" in packageBrowser, true, "browser entry exports WakewordsListener");
 
+const browserWakewords = await packageBrowser.Wakewords.load({ session: {}, labels: [] });
+assert.equal(typeof browserWakewords.createListener, "function", "browser load returns listener-capable instance");
+
 const modelUrl = fileURLToPath(new URL("./fixtures/model.onnx", import.meta.url));
 const labelsUrl = fileURLToPath(new URL("./fixtures/labels.json", import.meta.url));
 const wav = await readWav(new URL("./fixtures/speech-commands/backward/017c4098_nohash_0.wav", import.meta.url));
