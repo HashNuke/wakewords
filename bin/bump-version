@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -ne 1 || ! "$1" =~ ^(major|minor|patch)$ ]]; then
+  printf 'usage: %s <major|minor|patch>\n' "${0##*/}" >&2
+  exit 2
+fi
+
+part="$1"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd -- "${script_dir}/.." && pwd)"
+
+python3 - "${part}" "${repo_root}/python/pyproject.toml" "${repo_root}/js/package.json" "${repo_root}/js/package-lock.json" <<'PY'
+from pathlib import Path
+import json
+import re
+import sys
+
+part = sys.argv[1]
+pyproject_path = Path(sys.argv[2])
+package_json_path = Path(sys.argv[3])
+package_lock_path = Path(sys.argv[4])
+
+pyproject = pyproject_path.read_text(encoding="utf-8")
+match = re.search(r'(?m)^(version\s*=\s*")([0-9]+)\.([0-9]+)\.([0-9]+)(")\s*$', pyproject)
+if not match:
+    raise SystemExit(f"error: could not find project version in {pyproject_path}")
+
+# The Python package version is the source of truth. JS package metadata is
+# updated to the same computed next version after this point.
+major, minor, patch = (int(match.group(index)) for index in (2, 3, 4))
+if part == "major":
+    major += 1
+    minor = 0
+    patch = 0
+elif part == "minor":
+    minor += 1
+    patch = 0
+else:
+    patch += 1
+
+old_version = f"{match.group(2)}.{match.group(3)}.{match.group(4)}"
+new_version = f"{major}.{minor}.{patch}"
+
+pyproject_path.write_text(
+    pyproject[: match.start(2)] + new_version + pyproject[match.end(4) :],
+    encoding="utf-8",
+)
+
+package_json = json.loads(package_json_path.read_text(encoding="utf-8"))
+package_json["version"] = new_version
+package_json_path.write_text(json.dumps(package_json, indent=2) + "\n", encoding="utf-8")
+
+if package_lock_path.exists():
+    package_lock = json.loads(package_lock_path.read_text(encoding="utf-8"))
+    package_lock["version"] = new_version
+    package_lock.setdefault("packages", {}).setdefault("", {})["version"] = new_version
+    package_lock_path.write_text(json.dumps(package_lock, indent=2) + "\n", encoding="utf-8")
+
+print(f"bumped version {old_version} -> {new_version}")
+PY
