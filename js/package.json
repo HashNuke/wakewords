@@ -1,6 +1,6 @@
 {
   "name": "wakewords",
-  "version": "0.1.0",
+  "version": "0.3.10",
   "description": "Detect wakewords in the browser",
   "type": "module",
   "main": "./src/index.js",
@@ -13,6 +13,9 @@
   },
   "scripts": {
     "test": "node ./tests/preprocessing.test.mjs"
+  },
+  "dependencies": {
+    "onnxruntime-web": "^1.22.0"
   },
   "repository": {
     "type": "git",
