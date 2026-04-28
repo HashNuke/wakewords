@@ -68,6 +68,15 @@ class ServerTests(unittest.TestCase):
             output_dir.mkdir()
             (output_dir / "model.onnx").write_bytes(b"onnx")
             (output_dir / "labels.json").write_text(json.dumps(["yes"]) + "\n", encoding="utf-8")
+            bundle = ExportBundle(
+                output_dir=output_dir,
+                model_path=output_dir / "model.onnx",
+                checkpoint_dir=None,
+                checkpoint_path=None,
+                train_config_path=None,
+                labels_path=output_dir / "labels.json",
+                config_path=output_dir / "export_config.json",
+            )
 
             uvicorn_run = mock.Mock()
             with (
