@@ -12,7 +12,7 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "node --eval \"import('./src/index.js')\""
+    "test": "node ./tests/preprocessing.test.mjs"
   },
   "repository": {
     "type": "git",
