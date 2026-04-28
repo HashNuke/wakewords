@@ -60,9 +60,12 @@ def augment_dataset(
     tempos: tuple[float, ...] = DEFAULT_TEMPOS,
     snrs: tuple[int, ...] = DEFAULT_SNRS,
     target_samples_per_word: int = DEFAULT_TARGET_SAMPLES_PER_WORD,
+    parquet_writes_batch_size: int = DEFAULT_PARQUET_WRITE_BATCH_SIZE,
 ) -> list[Path]:
     if concurrency < 1:
         raise ValueError("concurrency must be >= 1")
+    if parquet_writes_batch_size < 1:
+        raise ValueError("parquet_writes_batch_size must be >= 1")
 
     parquet_path = data_dir / "custom_words.parquet"
     require_materialized_files(
@@ -104,7 +107,12 @@ def augment_dataset(
                 row = future.result()
                 if row is not None:
                     pending_rows.append(row)
-                    if _flush_pending_rows(store, pending_rows, overwrite=overwrite):
+                    if _flush_pending_rows(
+                        store,
+                        pending_rows,
+                        overwrite=overwrite,
+                        batch_size=parquet_writes_batch_size,
+                    ):
                         outputs.append(parquet_path)
                 bar.update(1)
 
@@ -393,18 +401,32 @@ def _mix_to_snr(*, speech_path: Path, noise_path: Path, output_path: Path, snr_d
     if speech_params != noise_params:
         raise ValueError("Expected mono 16kHz 16-bit WAV inputs for augmentation.")
 
-    if len(noise_samples) < len(speech_samples):
-        noise_samples.extend([0] * (len(speech_samples) - len(noise_samples)))
-    elif len(noise_samples) > len(speech_samples):
-        noise_samples = noise_samples[: len(speech_samples)]
-
     speech_rms = _rms(speech_samples)
     noise_rms = _rms(noise_samples)
     target_noise_rms = 0.0 if speech_rms == 0 else speech_rms / (10 ** (snr_db / 20))
     scale = 0.0 if noise_rms == 0 else target_noise_rms / noise_rms
 
-    mixed = [_clamp_int16(s + int(round(n * scale))) for s, n in zip(speech_samples, noise_samples, strict=False)]
-    _write_wav_samples(output_path, speech_params, mixed)
+    speech_frame_count = len(speech_samples)
+    _run_ffmpeg([
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(speech_path),
+        "-i",
+        str(noise_path),
+        "-filter_complex",
+        (
+            f"[0:a]atrim=end_sample={speech_frame_count}[speech];"
+            f"[1:a]volume={scale:.12f}:precision=double,apad,atrim=end_sample={speech_frame_count}[scaled];"
+            "[speech][scaled]amix=inputs=2:normalize=0:duration=first,"
+            "aformat=sample_rates=16000:sample_fmts=s16:channel_layouts=mono[out]"
+        ),
+        "-map",
+        "[out]",
+        "-c:a",
+        "pcm_s16le",
+        str(output_path),
+    ])
 
 
 def _read_wav_samples(path: Path) -> tuple[tuple[int, int, int], list[int]]:
@@ -419,15 +441,6 @@ def _read_wav_samples(path: Path) -> tuple[tuple[int, int, int], list[int]]:
         frames = wav_file.readframes(wav_file.getnframes())
     samples = list(struct.unpack(f"<{len(frames) // 2}h", frames))
     return params, samples
-
-
-def _write_wav_samples(path: Path, params: tuple[int, int, int], samples: list[int]) -> None:
-    channels, sample_width, frame_rate = params
-    with wave.open(str(path), "wb") as wav_file:
-        wav_file.setnchannels(channels)
-        wav_file.setsampwidth(sample_width)
-        wav_file.setframerate(frame_rate)
-        wav_file.writeframes(struct.pack(f"<{len(samples)}h", *samples))
 
 
 def _media_duration_seconds(path: Path) -> float:
@@ -467,10 +480,6 @@ def _rms(samples: list[int]) -> float:
     if not samples:
         return 0.0
     return math.sqrt(sum(sample * sample for sample in samples) / len(samples))
-
-
-def _clamp_int16(value: int) -> int:
-    return max(-32768, min(32767, value))
 
 
 def _new_temp_wav_path() -> Path:

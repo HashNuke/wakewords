@@ -64,12 +64,14 @@ class InitProjectTests(unittest.TestCase):
             config = json.loads(config_text)
             self.assertEqual(config["custom_words"], CUSTOM_WORDS_SAMPLE)
             self.assertEqual(config["google_speech_commands"], GOOGLE_SPEECH_COMMANDS)
+            self.assertEqual(config["augment"], {"parquet_writes_batch_size": 128})
             self.assertEqual(
                 config_text,
                 json.dumps(
                     {
                         "custom_words": CUSTOM_WORDS_SAMPLE,
                         "google_speech_commands": GOOGLE_SPEECH_COMMANDS,
+                        "augment": {"parquet_writes_batch_size": 128},
                     },
                     indent=2,
                     ensure_ascii=True,

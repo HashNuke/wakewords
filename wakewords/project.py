@@ -5,6 +5,8 @@ import shutil
 from importlib import resources
 from pathlib import Path
 
+from wakewords.augment import DEFAULT_PARQUET_WRITE_BATCH_SIZE
+
 
 GOOGLE_SPEECH_COMMANDS = [
     "yes",
@@ -74,6 +76,9 @@ def init_project(project_dir: Path) -> list[Path]:
     config = {
         "custom_words": CUSTOM_WORDS_SAMPLE,
         "google_speech_commands": GOOGLE_SPEECH_COMMANDS,
+        "augment": {
+            "parquet_writes_batch_size": DEFAULT_PARQUET_WRITE_BATCH_SIZE,
+        },
     }
     config_path.write_text(
         json.dumps(config, indent=2, ensure_ascii=True) + "\n",

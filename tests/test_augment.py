@@ -10,16 +10,19 @@ from unittest import mock
 
 from wakewords.augment import (
     AugmentTask,
+    DEFAULT_PARQUET_WRITE_BATCH_SIZE,
     NoiseSample,
     SourceSample,
     _build_tasks,
     _collect_noises,
     _collect_sources,
     _combo_shape,
+    _mix_to_snr,
     _select_subset,
     augment_dataset,
 )
 from wakewords.lfs import GitLfsPointerError
+from wakewords import cli
 from wakewords.parquet_store import CustomWordStore, build_generated_row
 
 
@@ -178,6 +181,84 @@ class AugmentTests(unittest.TestCase):
                     target_samples_per_word=2,
                 )
 
+    def test_augment_dataset_uses_configured_batch_size(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            data_dir = project_dir / "data"
+            noises_dir = project_dir / "background_audio"
+            noises_dir.mkdir()
+            (noises_dir / "rain.wav").write_bytes(b"not read because manifest exists")
+            (noises_dir / "manifest.jsonl").write_text(
+                json.dumps({"audio": "rain.wav", "duration_ms": 1000}) + "\n",
+                encoding="utf-8",
+            )
+            store = CustomWordStore(data_dir / "custom_words.parquet")
+            store.upsert(
+                build_generated_row(
+                    audio_bytes=_wav_bytes(),
+                    label="yes",
+                    voice_id="voice-1",
+                    voice_code="cr1",
+                    provider="cr",
+                    lang="en",
+                ),
+                overwrite=False,
+            )
+
+            original_upsert_many = CustomWordStore.upsert_many
+            with (
+                mock.patch("wakewords.augment._tempo_adjust", side_effect=_copy_to_temp_wav),
+                mock.patch("wakewords.augment._extract_noise_segment", side_effect=lambda **_: _temp_wav(_wav_bytes())),
+                mock.patch("wakewords.augment._mix_to_snr", side_effect=lambda **kwargs: kwargs["output_path"].write_bytes(_wav_bytes())),
+                mock.patch.object(CustomWordStore, "upsert_many", autospec=True, wraps=original_upsert_many) as upsert_many,
+            ):
+                augment_dataset(
+                    data_dir=data_dir,
+                    noises_dir=noises_dir,
+                    concurrency=1,
+                    overwrite=False,
+                    tempos=(0.95, 1.0, 1.05),
+                    snrs=(10,),
+                    target_samples_per_word=4,
+                    parquet_writes_batch_size=2,
+                )
+
+            self.assertEqual(upsert_many.call_count, 2)
+
+    def test_load_augment_batch_size_reads_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_path = Path(tmp_dir) / "config.json"
+            config_path.write_text(
+                json.dumps({"augment": {"parquet_writes_batch_size": 17}}) + "\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                cli._load_augment_parquet_writes_batch_size(config_path=config_path),
+                17,
+            )
+
+    def test_load_augment_batch_size_defaults_when_unset(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_path = Path(tmp_dir) / "config.json"
+            config_path.write_text(json.dumps({"custom_words": []}) + "\n", encoding="utf-8")
+
+            self.assertEqual(
+                cli._load_augment_parquet_writes_batch_size(config_path=config_path),
+                DEFAULT_PARQUET_WRITE_BATCH_SIZE,
+            )
+
+    def test_load_augment_batch_size_rejects_invalid_value(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_path = Path(tmp_dir) / "config.json"
+            config_path.write_text(
+                json.dumps({"augment": {"parquet_writes_batch_size": 0}}) + "\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "augment.parquet_writes_batch_size must be >= 1"):
+                cli._load_augment_parquet_writes_batch_size(config_path=config_path)
+
     def test_combo_shape_tracks_target_as_voice_count_changes(self) -> None:
         self.assertEqual(
             _combo_shape(
@@ -220,6 +301,38 @@ class AugmentTests(unittest.TestCase):
         self.assertEqual(len(first), 5)
         self.assertEqual(len(set(first)), 5)
         self.assertNotEqual(first, values[:5])
+
+    def test_mix_to_snr_uses_ffmpeg_filter_with_double_precision_and_length_lock(self) -> None:
+        speech_path = Path("speech.wav")
+        noise_path = Path("noise.wav")
+        output_path = Path("output.wav")
+
+        with (
+            mock.patch(
+                "wakewords.augment._read_wav_samples",
+                side_effect=[
+                    ((1, 2, 16000), [1000, -1000, 500, -500]),
+                    ((1, 2, 16000), [250, -250]),
+                ],
+            ),
+            mock.patch("wakewords.augment._run_ffmpeg") as run_ffmpeg,
+        ):
+            _mix_to_snr(
+                speech_path=speech_path,
+                noise_path=noise_path,
+                output_path=output_path,
+                snr_db=10,
+            )
+
+        run_ffmpeg.assert_called_once()
+        command = run_ffmpeg.call_args.args[0]
+        self.assertEqual(command[:6], ["ffmpeg", "-y", "-i", str(speech_path), "-i", str(noise_path)])
+        self.assertEqual(command[-3:], ["-c:a", "pcm_s16le", str(output_path)])
+        filter_complex = command[command.index("-filter_complex") + 1]
+        self.assertIn("[0:a]atrim=end_sample=4[speech]", filter_complex)
+        self.assertIn("precision=double", filter_complex)
+        self.assertIn("apad,atrim=end_sample=4[scaled]", filter_complex)
+        self.assertIn("amix=inputs=2:normalize=0:duration=first", filter_complex)
 
 
 def _wav_bytes(*, duration_ms: int = 250) -> bytes:

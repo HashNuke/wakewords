@@ -10,7 +10,7 @@ from pathlib import Path
 
 import fire
 
-from wakewords.augment import augment_dataset
+from wakewords.augment import DEFAULT_PARQUET_WRITE_BATCH_SIZE, augment_dataset
 from wakewords.check import check_dataset
 from wakewords.clean import clean_dataset
 from wakewords.dataset_manifest import build_split_manifests
@@ -120,12 +120,17 @@ class DataTools:
     ) -> None:
         """Augment clean generated wav files with tempo and background-noise variants."""
         _configure_logging(verbose=verbose)
+        data_path = Path(data_dir)
+        parquet_writes_batch_size = _load_augment_parquet_writes_batch_size(
+            config_path=data_path.parent / "config.json"
+        )
         outputs = augment_dataset(
-            data_dir=Path(data_dir),
+            data_dir=data_path,
             noises_dir=Path(noises_dir),
             concurrency=concurrency,
             overwrite=overwrite,
             target_samples_per_word=target_samples_per_word,
+            parquet_writes_batch_size=parquet_writes_batch_size,
         )
 
         for output in outputs:
@@ -375,6 +380,21 @@ def _load_generate_voice_selection(*, config_path: Path) -> VoiceSelectionConfig
         genders=tuple(genders),
         limit_per_group=limit_per_group,
     )
+
+
+def _load_augment_parquet_writes_batch_size(*, config_path: Path) -> int:
+    if not config_path.exists():
+        return DEFAULT_PARQUET_WRITE_BATCH_SIZE
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    augment_config = config.get("augment")
+    if augment_config is None:
+        return DEFAULT_PARQUET_WRITE_BATCH_SIZE
+    if not isinstance(augment_config, dict):
+        raise ValueError("augment must be an object")
+    batch_size = augment_config.get("parquet_writes_batch_size", DEFAULT_PARQUET_WRITE_BATCH_SIZE)
+    if not isinstance(batch_size, int) or batch_size < 1:
+        raise ValueError("augment.parquet_writes_batch_size must be >= 1")
+    return batch_size
 
 
 def _prompt_from_text(text: str) -> GenerationPrompt:
