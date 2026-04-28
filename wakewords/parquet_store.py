@@ -46,6 +46,7 @@ class CustomWordStore:
         self.path = path
         self._lock = threading.RLock()
         self._rows: dict[str, dict[str, object]] = {}
+        self._augmented_rows: dict[tuple[str, float, str | None, int | None], str] = {}
         self._voice_codes: dict[tuple[str, str], str] = {}
         self._provider_counters: dict[str, int] = {}
         self._load()
@@ -66,14 +67,13 @@ class CustomWordStore:
         snr: int | None,
     ) -> dict[str, object] | None:
         with self._lock:
-            for row in self._rows.values():
-                if row.get("source_type") != "augmented":
-                    continue
-                if row.get("parent_sample_id") != parent_sample_id:
-                    continue
-                if row.get("tempo") == tempo and row.get("noise_type") == noise_type and row.get("snr") == snr:
-                    return dict(row)
-            return None
+            sample_id = self._augmented_rows.get((parent_sample_id, tempo, noise_type, snr))
+            if sample_id is None:
+                return None
+            row = self._rows.get(sample_id)
+            if row is None:
+                return None
+            return dict(row)
 
     def voice_code(self, *, provider: str, voice_id: str) -> str:
         key = (provider, voice_id)
@@ -88,15 +88,22 @@ class CustomWordStore:
             return code
 
     def upsert(self, row: dict[str, object], *, overwrite: bool) -> bool:
-        sample_id = _require_str(row, "sample_id")
-        normalized = _normalize_row(row)
         with self._lock:
-            if sample_id in self._rows and not overwrite:
+            if not self._upsert_locked(row, overwrite=overwrite):
                 return False
-            self._rows[sample_id] = normalized
-            self._track_voice_code(normalized)
             self._write()
             return True
+
+    def upsert_many(self, rows: list[dict[str, object]], *, overwrite: bool) -> int:
+        with self._lock:
+            changed = 0
+            for row in rows:
+                if self._upsert_locked(row, overwrite=overwrite):
+                    changed += 1
+            if changed == 0:
+                return 0
+            self._write()
+            return changed
 
     def delete_matching(self, predicate: "Callable[[dict[str, object]], bool]") -> list[dict[str, object]]:
         removed: list[dict[str, object]] = []
@@ -110,6 +117,7 @@ class CustomWordStore:
             if not removed:
                 return []
             self._rows = remaining_rows
+            self._rebuild_augmented_rows()
             self._rebuild_voice_codes()
             self._write()
             return removed
@@ -126,6 +134,7 @@ class CustomWordStore:
             normalized = _normalize_row(row)
             sample_id = _require_str(normalized, "sample_id")
             self._rows[sample_id] = normalized
+            self._track_augmented_row(normalized)
             self._track_voice_code(normalized)
 
     def _write(self) -> None:
@@ -160,6 +169,36 @@ class CustomWordStore:
         self._provider_counters = {}
         for row in self._rows.values():
             self._track_voice_code(row)
+
+    def _track_augmented_row(self, row: dict[str, object]) -> None:
+        if row.get("source_type") != "augmented":
+            return
+        parent_sample_id = row.get("parent_sample_id")
+        tempo = row.get("tempo")
+        noise_type = row.get("noise_type")
+        snr = row.get("snr")
+        if not isinstance(parent_sample_id, str) or not isinstance(tempo, float):
+            return
+        self._augmented_rows[(parent_sample_id, tempo, noise_type if isinstance(noise_type, str) else None, snr if isinstance(snr, int) else None)] = _require_str(row, "sample_id")
+
+    def _rebuild_augmented_rows(self) -> None:
+        self._augmented_rows = {}
+        for row in self._rows.values():
+            self._track_augmented_row(row)
+
+    def _upsert_locked(self, row: dict[str, object], *, overwrite: bool) -> bool:
+        sample_id = _require_str(row, "sample_id")
+        normalized = _normalize_row(row)
+        existing = self._rows.get(sample_id)
+        if existing is not None and not overwrite:
+            return False
+        self._rows[sample_id] = normalized
+        if existing is not None:
+            self._rebuild_augmented_rows()
+        else:
+            self._track_augmented_row(normalized)
+        self._track_voice_code(normalized)
+        return True
 
 
 def build_generated_row(

@@ -7,7 +7,7 @@ import unittest
 import wave
 from pathlib import Path
 
-from wakewords.parquet_store import CustomWordStore, build_generated_row, probe_wav_bytes
+from wakewords.parquet_store import CustomWordStore, build_augmented_row, build_generated_row, probe_wav_bytes
 
 
 class CustomWordStoreTests(unittest.TestCase):
@@ -78,6 +78,100 @@ class CustomWordStoreTests(unittest.TestCase):
 
             self.assertEqual(store.voice_code(provider="cr", voice_id="voice-123"), "cr1")
             self.assertEqual(store.voice_code(provider="cr", voice_id="voice-456"), "cr2")
+
+    def test_upsert_many_writes_once_for_multiple_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = CustomWordStore(Path(tmp_dir) / "custom_words.parquet")
+            rows = [
+                build_generated_row(
+                    audio_bytes=_wav_bytes(),
+                    label="dexa",
+                    voice_id="voice-123",
+                    voice_code="cr1",
+                    provider="cr",
+                    lang="en",
+                ),
+                build_generated_row(
+                    audio_bytes=_wav_bytes(duration_ms=500),
+                    label="alexa",
+                    voice_id="voice-456",
+                    voice_code="cr2",
+                    provider="cr",
+                    lang="en",
+                ),
+            ]
+
+            with unittest.mock.patch.object(store, "_write", wraps=store._write) as write_mock:
+                changed = store.upsert_many(rows, overwrite=False)
+
+            self.assertEqual(changed, 2)
+            self.assertEqual(write_mock.call_count, 1)
+            self.assertEqual(len(CustomWordStore(store.path).rows()), 2)
+
+    def test_find_augmented_returns_indexed_row(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = CustomWordStore(Path(tmp_dir) / "custom_words.parquet")
+            source = build_generated_row(
+                audio_bytes=_wav_bytes(),
+                label="dexa",
+                voice_id="voice-123",
+                voice_code="cr1",
+                provider="cr",
+                lang="en",
+            )
+            augmented = build_augmented_row(
+                audio_bytes=_wav_bytes(duration_ms=500),
+                source_row=source,
+                tempo=1.05,
+                noise_type="rain",
+                snr=10,
+            )
+
+            store.upsert(source, overwrite=False)
+            store.upsert(augmented, overwrite=False)
+
+            found = store.find_augmented(
+                parent_sample_id=source["sample_id"],
+                tempo=1.05,
+                noise_type="rain",
+                snr=10,
+            )
+
+            self.assertIsNotNone(found)
+            assert found is not None
+            self.assertEqual(found["sample_id"], augmented["sample_id"])
+
+    def test_find_augmented_updates_after_delete(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = CustomWordStore(Path(tmp_dir) / "custom_words.parquet")
+            source = build_generated_row(
+                audio_bytes=_wav_bytes(),
+                label="dexa",
+                voice_id="voice-123",
+                voice_code="cr1",
+                provider="cr",
+                lang="en",
+            )
+            augmented = build_augmented_row(
+                audio_bytes=_wav_bytes(duration_ms=500),
+                source_row=source,
+                tempo=1.05,
+                noise_type="rain",
+                snr=10,
+            )
+
+            store.upsert(source, overwrite=False)
+            store.upsert(augmented, overwrite=False)
+            store.delete_matching(lambda row: row.get("sample_id") == augmented["sample_id"])
+
+            found = store.find_augmented(
+                parent_sample_id=source["sample_id"],
+                tempo=1.05,
+                noise_type="rain",
+                snr=10,
+            )
+
+            self.assertIsNone(found)
 
     def test_probe_wav_bytes_uses_actual_data_payload_for_placeholder_sizes(self) -> None:
         wav_bytes = _wav_bytes(duration_ms=250)

@@ -21,6 +21,7 @@ from wakewords.parquet_store import CustomWordStore, build_augmented_row
 DEFAULT_TEMPOS = (0.85, 0.90, 0.95, 1.0, 1.05, 1.10, 1.15)
 DEFAULT_SNRS = (20, 10, 5)
 DEFAULT_TARGET_SAMPLES_PER_WORD = 4000
+DEFAULT_PARQUET_WRITE_BATCH_SIZE = 128
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,7 @@ def augment_dataset(
         target_samples_per_word=target_samples_per_word,
     )
     outputs: list[Path] = []
+    pending_rows: list[dict[str, object]] = []
 
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
         futures = [
@@ -99,11 +101,32 @@ def augment_dataset(
         ]
         with tqdm(total=len(futures), unit="file") as bar:
             for future in as_completed(futures):
-                if future.result():
-                    outputs.append(parquet_path)
+                row = future.result()
+                if row is not None:
+                    pending_rows.append(row)
+                    if _flush_pending_rows(store, pending_rows, overwrite=overwrite):
+                        outputs.append(parquet_path)
                 bar.update(1)
 
+    if pending_rows and store.upsert_many(pending_rows, overwrite=overwrite):
+        pending_rows.clear()
+        outputs.append(parquet_path)
+
     return sorted(set(outputs))
+
+
+def _flush_pending_rows(
+    store: CustomWordStore,
+    pending_rows: list[dict[str, object]],
+    *,
+    overwrite: bool,
+    batch_size: int = DEFAULT_PARQUET_WRITE_BATCH_SIZE,
+) -> bool:
+    if len(pending_rows) < batch_size:
+        return False
+    changed = store.upsert_many(pending_rows, overwrite=overwrite)
+    pending_rows.clear()
+    return changed > 0
 
 
 def _collect_sources(store: CustomWordStore) -> list[SourceSample]:
@@ -258,7 +281,7 @@ def _selection_seed(*, source: SourceSample, category: str) -> int:
     return int.from_bytes(digest[:8], "big")
 
 
-def _run_task(*, task: AugmentTask, store: CustomWordStore, overwrite: bool) -> bool:
+def _run_task(*, task: AugmentTask, store: CustomWordStore, overwrite: bool) -> dict[str, object] | None:
     existing = store.find_augmented(
         parent_sample_id=task.source.sample_id,
         tempo=task.tempo,
@@ -266,7 +289,7 @@ def _run_task(*, task: AugmentTask, store: CustomWordStore, overwrite: bool) -> 
         snr=task.snr,
     )
     if existing is not None and not overwrite:
-        return False
+        return None
 
     source_temp_path: Path | None = None
     speech_temp_path: Path | None = None
@@ -296,15 +319,12 @@ def _run_task(*, task: AugmentTask, store: CustomWordStore, overwrite: bool) -> 
             )
             audio_bytes = output_temp_path.read_bytes()
 
-        return store.upsert(
-            build_augmented_row(
-                audio_bytes=audio_bytes,
-                source_row=task.source.row,
-                tempo=task.tempo,
-                noise_type=task.noise.path.stem if task.noise is not None else None,
-                snr=task.snr,
-            ),
-            overwrite=overwrite,
+        return build_augmented_row(
+            audio_bytes=audio_bytes,
+            source_row=task.source.row,
+            tempo=task.tempo,
+            noise_type=task.noise.path.stem if task.noise is not None else None,
+            snr=task.snr,
         )
     finally:
         if source_temp_path is not None:
