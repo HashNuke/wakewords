@@ -1,20 +1,27 @@
 {
   "name": "wakewords",
   "version": "0.3.10",
-  "description": "Detect wakewords in the browser",
+  "description": "Detect wakewords in browsers and Node.js",
   "type": "module",
-  "main": "./src/index.js",
+  "main": "./src/index-node.js",
   "exports": {
-    ".": "./src/index.js"
+    ".": {
+      "browser": "./src/index-browser.js",
+      "node": "./src/index-node.js",
+      "default": "./src/index-browser.js"
+    },
+    "./browser": "./src/browser.js",
+    "./node": "./src/node.js"
   },
   "directories": {
     "doc": "docs",
     "test": "tests"
   },
   "scripts": {
-    "test": "node ./tests/preprocessing.test.mjs && node ./tests/inference.test.mjs"
+    "test": "node ./tests/preprocessing.test.mjs && node ./tests/inference.test.mjs && node ./tests/entrypoints.test.mjs"
   },
   "dependencies": {
+    "onnxruntime-node": "^1.24.3",
     "onnxruntime-web": "^1.22.0"
   },
   "repository": {

@@ -5,6 +5,19 @@
 - Keep one-time inference separate from mic-driven continuous inference.
 - Require the app to provide a `MediaStream` for continuous inference.
 - Reuse the same preprocessing and ONNX inference path for both APIs.
+- Ship one npm package with runtime-specific entrypoints for browser and Node.js.
+
+## Entrypoints
+
+```ts
+import { Wakewords } from "wakewords";
+import { Wakewords as BrowserWakewords, WakewordsListener } from "wakewords/browser";
+import { Wakewords as NodeWakewords } from "wakewords/node";
+```
+
+- `wakewords` exports inference-only APIs and resolves to the best runtime entrypoint through package exports.
+- `wakewords/browser` exports browser inference plus `WakewordsListener` and `createListener()`.
+- `wakewords/node` exports Node.js inference with local filesystem support for model and label paths.
 
 ## Load Model
 
@@ -22,6 +35,26 @@ const wakewords = await Wakewords.load({
 ```ts
 const wakewords = await Wakewords.load({
   modelUrl: "/model.onnx",
+  labels: ["hey_computer", "background"],
+});
+```
+
+In Node.js, `labelsUrl` can be a local path, a `file:` URL, or an HTTP(S) URL.
+
+```ts
+import { Wakewords } from "wakewords/node";
+
+const wakewords = await Wakewords.load({
+  modelUrl: "./models/model.onnx",
+  labelsUrl: "./models/labels.json",
+});
+```
+
+If the app already has model bytes or a created ONNX session, pass those directly.
+
+```ts
+const wakewords = await Wakewords.load({
+  modelData: modelBytes,
   labels: ["hey_computer", "background"],
 });
 ```
@@ -57,9 +90,16 @@ type Prediction = {
 
 ## Continuous Inference
 
-The library does not request mic permission. The app must provide a `MediaStream`.
+Continuous inference is browser-only. Import from `wakewords/browser` so the listener APIs are available. The library does not request mic permission. The app must provide a `MediaStream`.
 
 ```ts
+import { Wakewords } from "wakewords/browser";
+
+const wakewords = await Wakewords.load({
+  modelUrl: "/model.onnx",
+  labelsUrl: "/labels.json",
+});
+
 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
 const listener = wakewords.createListener({
@@ -80,20 +120,27 @@ listener.destroy();
 
 The listener should dispatch `prediction` events with `Prediction` as `event.detail`.
 
-## Proposed Public API
+## Public API
 
 ```ts
 class Wakewords {
   static load(options: {
-    modelUrl: string;
-    labelsUrl?: string;
+    modelUrl?: string | URL;
+    modelData?: ArrayBuffer | Uint8Array;
+    session?: InferenceSession;
+    labelsUrl?: string | URL;
     labels?: string[];
+    onnxOptions?: Record<string, unknown>;
   }): Promise<Wakewords>;
 
   predict(input: {
     samples: Float32Array;
     sampleRate: number;
   }): Promise<Prediction>;
+}
+
+class BrowserWakewords extends Wakewords {
+  static load(options: WakewordsLoadOptions): Promise<BrowserWakewords>;
 
   createListener(options: {
     stream: MediaStream;
@@ -113,6 +160,9 @@ type WakewordsListener = EventTarget & {
 
 ## Notes
 
+- `wakewords` and `wakewords/node` do not export `WakewordsListener`.
+- `wakewords/browser` uses `onnxruntime-web` and defaults to the WASM execution provider.
+- `wakewords/node` uses `onnxruntime-node` and supports local label file paths.
 - `stream` is required for continuous inference.
 - `predict()` is the shared inference primitive.
-- `createListener()` should sample from the provided stream and repeatedly call `predict()`.
+- `createListener()` samples from the provided stream and repeatedly calls `predict()`.

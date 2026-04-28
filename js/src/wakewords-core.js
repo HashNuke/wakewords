@@ -1,94 +1,106 @@
-import * as ort from "onnxruntime-web";
-
-import { WakewordsListener } from "./listener.js";
 import { mfccFeatures, resample } from "./preprocessing.js";
 
 const MODEL_SAMPLE_RATE = 16000;
 const N_MFCC = 64;
 const TOP_PROBABILITY_COUNT = 5;
 
-export class Wakewords {
-  static async load(options) {
-    const resolved = await resolveLoadOptions(options);
-    return new Wakewords(resolved);
-  }
-
-  constructor(options) {
-    this.modelUrl = options.modelUrl;
-    this.labels = options.labels;
-    this.session = options.session;
-  }
-
-  async predict(input) {
-    validateAudioInput(input);
-    const samples =
-      input.sampleRate === MODEL_SAMPLE_RATE
-        ? new Float32Array(input.samples)
-        : resample(input.samples, input.sampleRate, MODEL_SAMPLE_RATE);
-    const feeds = buildFeeds(this.session, samples);
-    const outputs = await this.session.run(feeds);
-    const output = outputs[this.session.outputNames[0]];
-    const probabilities = normalizeProbabilities(Array.from(output.data));
-    const resultLabels =
-      this.labels.length === probabilities.length
-        ? this.labels
-        : probabilities.map((_, index) => `class_${index}`);
-
-    let bestIndex = 0;
-    for (let index = 1; index < probabilities.length; index += 1) {
-      if (probabilities[index] > probabilities[bestIndex]) bestIndex = index;
+export function createWakewordsClass(runtime) {
+  return class Wakewords {
+    static async load(options) {
+      const resolved = await resolveLoadOptions(runtime, options);
+      return new Wakewords(resolved);
     }
 
-    return {
-      label: resultLabels[bestIndex],
-      probability: probabilities[bestIndex],
-      probabilities: Object.fromEntries(resultLabels.map((label, index) => [label, probabilities[index]])),
-      topProbabilities: topProbabilities(resultLabels, probabilities),
-    };
-  }
+    constructor(options) {
+      this.modelUrl = options.modelUrl;
+      this.labels = options.labels;
+      this.session = options.session;
+    }
 
-  createListener(options) {
-    return new WakewordsListener({ wakewords: this, ...options });
-  }
+    async predict(input) {
+      validateAudioInput(input);
+      const samples =
+        input.sampleRate === MODEL_SAMPLE_RATE
+          ? new Float32Array(input.samples)
+          : resample(input.samples, input.sampleRate, MODEL_SAMPLE_RATE);
+      const feeds = buildFeeds(runtime.ort, this.session, samples);
+      const outputs = await this.session.run(feeds);
+      const output = outputs[this.session.outputNames[0]];
+      const probabilities = normalizeProbabilities(Array.from(output.data));
+      const resultLabels =
+        this.labels.length === probabilities.length
+          ? this.labels
+          : probabilities.map((_, index) => `class_${index}`);
+
+      let bestIndex = 0;
+      for (let index = 1; index < probabilities.length; index += 1) {
+        if (probabilities[index] > probabilities[bestIndex]) bestIndex = index;
+      }
+
+      return {
+        label: resultLabels[bestIndex],
+        probability: probabilities[bestIndex],
+        probabilities: Object.fromEntries(resultLabels.map((label, index) => [label, probabilities[index]])),
+        topProbabilities: topProbabilities(resultLabels, probabilities),
+      };
+    }
+  };
 }
 
-async function resolveLoadOptions(options) {
+async function resolveLoadOptions(runtime, options) {
   if (!options || typeof options !== "object") {
     throw new TypeError("Wakewords.load() requires an options object.");
   }
-  if (typeof options.modelUrl !== "string" || !options.modelUrl) {
-    throw new TypeError("Wakewords.load() requires a non-empty modelUrl.");
-  }
 
-  if (Array.isArray(options.labels)) {
+  if (options.session) {
     return {
-      modelUrl: options.modelUrl,
-      labels: options.labels.slice(),
-      session: await ort.InferenceSession.create(options.modelUrl, { executionProviders: ["wasm"] }),
+      modelUrl: options.modelUrl ?? null,
+      labels: await resolveLabels(runtime, options),
+      session: options.session,
     };
   }
 
-  if (typeof options.labelsUrl === "string" && options.labelsUrl) {
-    const response = await fetch(options.labelsUrl);
-    if (!response.ok) {
-      throw new Error(`labels failed: ${response.status}`);
-    }
-    const labels = await response.json();
-    if (!Array.isArray(labels) || !labels.every((label) => typeof label === "string")) {
-      throw new TypeError("labels response must be a JSON array of strings.");
-    }
-    return {
-      modelUrl: options.modelUrl,
-      labels,
-      session: await ort.InferenceSession.create(options.modelUrl, { executionProviders: ["wasm"] }),
-    };
-  }
-
+  const modelSource = resolveModelSource(options);
+  const session = await runtime.ort.InferenceSession.create(modelSource, runtime.onnxOptions(options));
   return {
-    modelUrl: options.modelUrl,
-    labels: [],
-    session: await ort.InferenceSession.create(options.modelUrl, { executionProviders: ["wasm"] }),
+    modelUrl: typeof modelSource === "string" ? modelSource : options.modelUrl ?? null,
+    labels: await resolveLabels(runtime, options),
+    session,
   };
+}
+
+function resolveModelSource(options) {
+  if (options.modelData instanceof Uint8Array) {
+    return options.modelData;
+  }
+  if (options.modelData instanceof ArrayBuffer) {
+    return new Uint8Array(options.modelData);
+  }
+  if (typeof options.modelUrl === "string" && options.modelUrl) {
+    return options.modelUrl;
+  }
+  if (options.modelUrl instanceof URL) {
+    return options.modelUrl.href;
+  }
+  throw new TypeError("Wakewords.load() requires a non-empty modelUrl or modelData.");
+}
+
+async function resolveLabels(runtime, options) {
+  if (Array.isArray(options.labels)) {
+    return options.labels.slice();
+  }
+  if (typeof options.labelsUrl === "string" || options.labelsUrl instanceof URL) {
+    return parseLabelsText(await runtime.loadText(options.labelsUrl));
+  }
+  return [];
+}
+
+function parseLabelsText(text) {
+  const labels = JSON.parse(text);
+  if (!Array.isArray(labels) || !labels.every((label) => typeof label === "string")) {
+    throw new TypeError("labels response must be a JSON array of strings.");
+  }
+  return labels;
 }
 
 function validateAudioInput(input) {
@@ -103,7 +115,7 @@ function validateAudioInput(input) {
   }
 }
 
-function buildFeeds(session, samples) {
+function buildFeeds(ort, session, samples) {
   const inputShapes = inputShapeMap(session);
   const audioShape = audioInputShape(session, inputShapes);
   const audioInput = expectsMfcc(audioShape) ? mfccFeatures(samples) : new Float32Array(samples);
@@ -111,9 +123,9 @@ function buildFeeds(session, samples) {
   for (const name of session.inputNames) {
     const normalized = name.toLowerCase();
     if (normalized.includes("length")) {
-      feeds[name] = lengthTensor(inputShapes.get(name), audioInput);
+      feeds[name] = lengthTensor(ort, inputShapes.get(name), audioInput);
     } else if (normalized.includes("audio") || normalized.includes("signal") || session.inputNames.length === 1) {
-      feeds[name] = audioTensor(audioInput, audioShape);
+      feeds[name] = audioTensor(ort, audioInput, audioShape);
     } else {
       throw new Error(`unsupported ONNX input: ${name}`);
     }
@@ -162,7 +174,7 @@ function expectsMfcc(shape) {
   return shape.length === 3 && shape[1] === N_MFCC;
 }
 
-function audioTensor(input, shape) {
+function audioTensor(ort, input, shape) {
   const rank = shape.length || 2;
   if (rank === 1) {
     return new ort.Tensor("float32", input, [input.length]);
@@ -179,7 +191,7 @@ function audioTensor(input, shape) {
   throw new Error(`unsupported ONNX audio input rank: ${rank}`);
 }
 
-function lengthTensor(shape, audioInput) {
+function lengthTensor(ort, shape, audioInput) {
   const rank = shape?.length || 1;
   const length = audioInput.frames || audioInput.length;
   const data = BigInt64Array.from([BigInt(length)]);

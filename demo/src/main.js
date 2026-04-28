@@ -1,4 +1,4 @@
-import { Wakewords } from "wakewords";
+import { Wakewords } from "wakewords/browser";
 
 import "./style.css";
 
