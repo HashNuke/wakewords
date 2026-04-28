@@ -5,9 +5,10 @@ import { fileURLToPath } from "node:url";
 const packageRoot = await import("wakewords");
 const packageNode = await import("wakewords/node");
 const packageBrowser = await import("wakewords/browser");
+const fixturesUrl = new URL("../../tests/fixtures/", import.meta.url);
 const defaultModelPath = fileURLToPath(import.meta.resolve("wakewords/model.onnx"));
 const defaultLabelsPath = fileURLToPath(import.meta.resolve("wakewords/labels.json"));
-const labels = JSON.parse(await readFile(new URL("./fixtures/labels.json", import.meta.url), "utf8"));
+const labels = JSON.parse(await readFile(new URL("labels.json", fixturesUrl), "utf8"));
 
 assert.equal(await readFile(defaultModelPath).then((data) => data.length > 0), true, "default model is exported");
 assert.deepEqual(JSON.parse(await readFile(defaultLabelsPath, "utf8")), labels, "default labels are exported");
@@ -26,9 +27,9 @@ assert.equal("WakewordsListener" in packageBrowser, true, "browser entry exports
 const browserWakewords = await packageBrowser.Wakewords.load({ session: {}, labels: [] });
 assert.equal(typeof browserWakewords.createListener, "function", "browser load returns listener-capable instance");
 
-const modelUrl = fileURLToPath(new URL("./fixtures/model.onnx", import.meta.url));
-const labelsUrl = fileURLToPath(new URL("./fixtures/labels.json", import.meta.url));
-const wav = await readWav(new URL("./fixtures/speech-commands/backward/017c4098_nohash_0.wav", import.meta.url));
+const modelUrl = fileURLToPath(new URL("model.onnx", fixturesUrl));
+const labelsUrl = fileURLToPath(new URL("labels.json", fixturesUrl));
+const wav = await readWav(new URL("speech-commands/backward/017c4098_nohash_0.wav", fixturesUrl));
 
 for (const entry of [packageRoot, packageNode]) {
   const wakewords = await entry.Wakewords.load({ modelUrl, labels });

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { Buffer } from "node:buffer";
 
-const fixture = JSON.parse(await readFile(new URL("./fixtures/mfcc_preprocessor.json", import.meta.url), "utf8"));
+const fixture = JSON.parse(await readFile(new URL("../../tests/fixtures/mfcc-preprocessor.json", import.meta.url), "utf8"));
 const audioSource = await readFile(new URL("../wakewords/playground/audio.js", import.meta.url), "utf8");
 const audioModule = await import(`data:text/javascript;base64,${Buffer.from(audioSource).toString("base64")}`);
 

@@ -4,8 +4,9 @@ import { fileURLToPath } from "node:url";
 
 import { Wakewords } from "../src/index.js";
 
-const labels = JSON.parse(await readFile(new URL("./fixtures/labels.json", import.meta.url), "utf8"));
-const modelUrl = fileURLToPath(new URL("./fixtures/model.onnx", import.meta.url));
+const fixturesUrl = new URL("../../tests/fixtures/", import.meta.url);
+const labels = JSON.parse(await readFile(new URL("labels.json", fixturesUrl), "utf8"));
+const modelUrl = fileURLToPath(new URL("model.onnx", fixturesUrl));
 const wakewords = await Wakewords.load({ modelUrl, labels });
 
 const cases = [
@@ -18,7 +19,7 @@ const cases = [
 ];
 
 for (const [label, filename] of cases) {
-  const wav = await readWav(new URL(`./fixtures/speech-commands/${label}/${filename}`, import.meta.url));
+  const wav = await readWav(new URL(`speech-commands/${label}/${filename}`, fixturesUrl));
   const result = await wakewords.predict(wav);
   assert.equal(result.label, label, `${filename}: expected ${label}, got ${result.label}`);
   assert.ok(result.probability > 0.4, `${filename}: expected confidence over 40%, got ${result.probability}`);

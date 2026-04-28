@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 import { mfccFeatures } from "../src/preprocessing.js";
 
-const fixture = JSON.parse(await readFile(new URL("./fixtures/mfcc-preprocessor.json", import.meta.url), "utf8"));
+const fixture = JSON.parse(await readFile(new URL("../../tests/fixtures/mfcc-preprocessor.json", import.meta.url), "utf8"));
 
 const tolerance = 3e-4;
 

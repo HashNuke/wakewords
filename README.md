@@ -112,6 +112,19 @@ const wakewords = await Wakewords.load();
 
 Use `wakewords/browser` for browser microphone listening and `wakewords/node` for Node.js inference with filesystem paths. See [`docs/javascript-api.md`](docs/javascript-api.md).
 
+### Swift Inference
+
+The repository also includes a Swift package under [`swift/`](swift) for ONNX inference with the same preprocessing pipeline used by the JavaScript library:
+
+```swift
+import Wakewords
+
+let wakewords = try Wakewords.load(modelPath: "/path/to/models/model.onnx")
+let result = try wakewords.predict(samples: samples, sampleRate: 16_000)
+```
+
+The Swift package depends on the ONNX Runtime Swift package manager wrapper and is intended for local app-side inference against exported `model.onnx` bundles.
+
 ### Find Outputs
 
 Training artifacts are written under `runs/<run-name>/`:
