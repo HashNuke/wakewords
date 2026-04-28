@@ -14,11 +14,11 @@
       <section class="controls setup-controls">
         <label class="field">
           <span>Model URL</span>
-          <input id="modelUrl" type="text" value="/model.onnx" spellcheck="false" />
+          <input id="modelUrl" type="text" placeholder="bundled default" spellcheck="false" />
         </label>
         <label class="field">
           <span>Labels URL</span>
-          <input id="labelsUrl" type="text" value="/labels.json" spellcheck="false" />
+          <input id="labelsUrl" type="text" placeholder="bundled default" spellcheck="false" />
         </label>
         <button id="loadModel" type="button">Load model</button>
       </section>
@@ -30,7 +30,7 @@
           <input id="threshold" type="range" min="0" max="100" value="90" />
           <span id="thresholdValue">90%</span>
         </label>
-        <div id="status" class="status">load a model to begin</div>
+        <div id="status" class="status">load the bundled model to begin</div>
       </section>
 
       <section id="labelGrid" class="grid" aria-live="polite"></section>

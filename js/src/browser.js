@@ -6,6 +6,8 @@ import { createWakewordsClass } from "./wakewords-core.js";
 
 const BaseWakewords = createWakewordsClass({
   ort,
+  defaultModelUrl: new URL("../assets/model.onnx", import.meta.url).href,
+  defaultLabelsUrl: new URL("../assets/labels.json", import.meta.url).href,
   loadText: async (source) => {
     const response = await fetch(source);
     if (!response.ok) {

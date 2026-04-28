@@ -11,7 +11,9 @@
       "default": "./src/index-browser.js"
     },
     "./browser": "./src/browser.js",
-    "./node": "./src/node.js"
+    "./node": "./src/node.js",
+    "./model.onnx": "./assets/model.onnx",
+    "./labels.json": "./assets/labels.json"
   },
   "directories": {
     "doc": "docs",

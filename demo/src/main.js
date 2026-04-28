@@ -22,24 +22,14 @@ loadButton.addEventListener("click", async () => {
   const modelUrl = modelUrlInput.value.trim();
   const labelsUrl = labelsUrlInput.value.trim();
 
-  if (!modelUrl) {
-    statusEl.textContent = "enter a model URL";
-    return;
-  }
-
-  if (!labelsUrl) {
-    statusEl.textContent = "enter a labels URL";
-    return;
-  }
-
   loadButton.disabled = true;
   enableButton.disabled = true;
   statusEl.textContent = "loading model";
 
   try {
     wakewords = await Wakewords.load({
-      modelUrl,
-      labelsUrl,
+      ...(modelUrl ? { modelUrl } : {}),
+      ...(labelsUrl ? { labelsUrl } : {}),
     });
     renderLamps(wakewords.labels);
     enableButton.disabled = false;

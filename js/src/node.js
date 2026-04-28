@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 import * as ort from "onnxruntime-node";
 
@@ -7,6 +8,8 @@ import { createWakewordsClass } from "./wakewords-core.js";
 
 const runtime = {
   ort,
+  defaultModelUrl: fileURLToPath(new URL("../assets/model.onnx", import.meta.url)),
+  defaultLabelsUrl: new URL("../assets/labels.json", import.meta.url),
   loadText: async (source) => {
     if (source instanceof URL) {
       if (source.protocol === "file:") {

@@ -6,7 +6,7 @@ const TOP_PROBABILITY_COUNT = 5;
 
 export function createWakewordsClass(runtime) {
   return class Wakewords {
-    static async load(options) {
+    static async load(options = {}) {
       const resolved = await resolveLoadOptions(runtime, options);
       return new Wakewords(resolved);
     }
@@ -60,37 +60,41 @@ async function resolveLoadOptions(runtime, options) {
     };
   }
 
-  const modelSource = resolveModelSource(options);
+  const model = resolveModelSource(runtime, options);
+  const modelSource = model.source;
   const session = await runtime.ort.InferenceSession.create(modelSource, runtime.onnxOptions(options));
   return {
     modelUrl: typeof modelSource === "string" ? modelSource : options.modelUrl ?? null,
-    labels: await resolveLabels(runtime, options),
+    labels: await resolveLabels(runtime, options, model.isDefault),
     session,
   };
 }
 
-function resolveModelSource(options) {
+function resolveModelSource(runtime, options) {
   if (options.modelData instanceof Uint8Array) {
-    return options.modelData;
+    return { source: options.modelData, isDefault: false };
   }
   if (options.modelData instanceof ArrayBuffer) {
-    return new Uint8Array(options.modelData);
+    return { source: new Uint8Array(options.modelData), isDefault: false };
   }
   if (typeof options.modelUrl === "string" && options.modelUrl) {
-    return options.modelUrl;
+    return { source: options.modelUrl, isDefault: false };
   }
   if (options.modelUrl instanceof URL) {
-    return options.modelUrl.href;
+    return { source: options.modelUrl.href, isDefault: false };
   }
-  throw new TypeError("Wakewords.load() requires a non-empty modelUrl or modelData.");
+  return { source: runtime.defaultModelUrl, isDefault: true };
 }
 
-async function resolveLabels(runtime, options) {
+async function resolveLabels(runtime, options, useDefaultLabels) {
   if (Array.isArray(options.labels)) {
     return options.labels.slice();
   }
   if (typeof options.labelsUrl === "string" || options.labelsUrl instanceof URL) {
     return parseLabelsText(await runtime.loadText(options.labelsUrl));
+  }
+  if (useDefaultLabels) {
+    return parseLabelsText(await runtime.loadText(runtime.defaultLabelsUrl));
   }
   return [];
 }

@@ -21,20 +21,30 @@ import { Wakewords as NodeWakewords } from "wakewords/node";
 
 ## Load Model
 
+Load the bundled default model and labels:
+
+```ts
+import { Wakewords } from "wakewords";
+
+const wakewords = await Wakewords.load();
+```
+
+Pass custom model and label locations when you want to use your own trained model.
+
 ```ts
 import { Wakewords } from "wakewords";
 
 const wakewords = await Wakewords.load({
-  modelUrl: "/model.onnx",
-  labelsUrl: "/labels.json",
+  modelUrl: "/custom-model.onnx",
+  labelsUrl: "/custom-labels.json",
 });
 ```
 
-`labelsUrl` is optional if labels are provided inline.
+`labelsUrl` is optional if labels are provided inline. If `modelUrl` or `modelData` is provided without labels, predictions fall back to `class_0`, `class_1`, and so on.
 
 ```ts
 const wakewords = await Wakewords.load({
-  modelUrl: "/model.onnx",
+  modelUrl: "/custom-model.onnx",
   labels: ["hey_computer", "background"],
 });
 ```
@@ -95,10 +105,7 @@ Continuous inference is browser-only. Import from `wakewords/browser` so the lis
 ```ts
 import { Wakewords } from "wakewords/browser";
 
-const wakewords = await Wakewords.load({
-  modelUrl: "/model.onnx",
-  labelsUrl: "/labels.json",
-});
+const wakewords = await Wakewords.load();
 
 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 

@@ -5,6 +5,12 @@ import { fileURLToPath } from "node:url";
 const packageRoot = await import("wakewords");
 const packageNode = await import("wakewords/node");
 const packageBrowser = await import("wakewords/browser");
+const defaultModelPath = fileURLToPath(import.meta.resolve("wakewords/model.onnx"));
+const defaultLabelsPath = fileURLToPath(import.meta.resolve("wakewords/labels.json"));
+const labels = JSON.parse(await readFile(new URL("./fixtures/labels.json", import.meta.url), "utf8"));
+
+assert.equal(await readFile(defaultModelPath).then((data) => data.length > 0), true, "default model is exported");
+assert.deepEqual(JSON.parse(await readFile(defaultLabelsPath, "utf8")), labels, "default labels are exported");
 
 assert.equal("Wakewords" in packageRoot, true, "root exports Wakewords");
 assert.equal("mfccFeatures" in packageRoot, true, "root exports mfccFeatures");
@@ -17,7 +23,6 @@ assert.equal("WakewordsListener" in packageNode, false, "node entry should not e
 assert.equal("Wakewords" in packageBrowser, true, "browser entry exports Wakewords");
 assert.equal("WakewordsListener" in packageBrowser, true, "browser entry exports WakewordsListener");
 
-const labels = JSON.parse(await readFile(new URL("./fixtures/labels.json", import.meta.url), "utf8"));
 const modelUrl = fileURLToPath(new URL("./fixtures/model.onnx", import.meta.url));
 const labelsUrl = fileURLToPath(new URL("./fixtures/labels.json", import.meta.url));
 const wav = await readWav(new URL("./fixtures/speech-commands/backward/017c4098_nohash_0.wav", import.meta.url));
@@ -31,6 +36,13 @@ for (const entry of [packageRoot, packageNode]) {
 
 for (const entry of [packageRoot, packageNode]) {
   const wakewords = await entry.Wakewords.load({ modelUrl, labelsUrl });
+  const result = await wakewords.predict(wav);
+  assert.equal(result.label, "backward");
+  assert.ok(result.probability > 0.4);
+}
+
+for (const entry of [packageRoot, packageNode]) {
+  const wakewords = await entry.Wakewords.load();
   const result = await wakewords.predict(wav);
   assert.equal(result.label, "backward");
   assert.ok(result.probability > 0.4);
