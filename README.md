@@ -1,9 +1,13 @@
 # `wakewords` detection for your apps & webpages
 
+![JavaScript](https://img.shields.io/badge/javascript-%23323330.svg?style=for-the-badge&logo=javascript&logoColor=%23F7DF1E)
+![NodeJS](https://img.shields.io/badge/node.js-6DA55F.svg?style=for-the-badge&logo=node.js&logoColor=white)
+![Swift](https://img.shields.io/badge/swift-F54A2A?style=for-the-badge&logo=swift&logoColor=white)
+![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
+
 > Add your wakewords like *"alexa"*, *"hey siri"* in your apps.
 
-* Detect wakewords in the browser with JavaScript (or nodejs)
-* Detect wakewords in your ios & mac apps in Swift
+* Works in the browser with Javascript, Node.js, Swift and Python.
 * Train your own custom wakewords detection model in 30 min (Yes, you can do "Jarvis", "Computer", etc)
 
 ## Quick Start: Detect wakewords in your web pages
