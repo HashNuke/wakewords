@@ -1,6 +1,6 @@
-# `wakewords` - wakeword detection for your apps & webpages
+# `wakewords` detection for your apps & webpages
 
-> This means your own *"alexa"*, *"hey siri"* or *"hey google"* in your apps.
+> Add your wakewords like *"alexa"*, *"hey siri"* in your apps.
 
 * Detect wakewords in the browser with JavaScript (or nodejs)
 * Detect wakewords in your ios & mac apps in Swift
