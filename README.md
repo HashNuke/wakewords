@@ -26,7 +26,19 @@ listener.addEventListener("prediction", (event) => {
 await listener.start();
 ```
 
-> The default model is trained for wakewords from Google Speech Commands dataset v2.
+**Default wake words**
+The default model is trained for wakewords from Google Speech Commands dataset v2. List of words below.
+
+|  |  |  |  |  |  |
+|---|---|---|---|---|---|
+| backward | bed | bird | cat | dog | down |
+| eight | five | follow | forward | four | go |
+| happy | house | learn | left | marvin | nine |
+| no | off | on | one | right | seven |
+| sheila | six | stop | three | tree | two |
+| up | visual | wow | yes | zero | |
+
+> It does include 12 other words mentioned in the labels.json in this repo. That shouldnt matter if you only want the words from the Speech Commands dataset.
 
 ## Quick Start: Train for your own wakewords
 
