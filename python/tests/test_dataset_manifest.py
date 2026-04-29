@@ -16,12 +16,27 @@ class DatasetManifestTests(unittest.TestCase):
     def test_build_split_manifests_materializes_custom_words_from_parquet(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_dir = Path(tmp_dir)
+            (project_dir / "config.json").write_text(
+                json.dumps({"custom_words": [{"tts_input": "Yes", "label": "yes"}]}) + "\n",
+                encoding="utf-8",
+            )
             data_dir = project_dir / "data"
             store = CustomWordStore(data_dir / "custom_words.parquet")
             store.upsert(
                 build_generated_row(
                     audio_bytes=_wav_bytes(),
                     label="yes",
+                    voice_id="voice-1",
+                    voice_code="cr1",
+                    provider="cr",
+                    lang="en",
+                ),
+                overwrite=False,
+            )
+            store.upsert(
+                build_generated_row(
+                    audio_bytes=_wav_bytes(),
+                    label="no",
                     voice_id="voice-1",
                     voice_code="cr1",
                     provider="cr",
@@ -37,7 +52,7 @@ class DatasetManifestTests(unittest.TestCase):
                 test_ratio=0,
             )
 
-            row = store.rows()[0]
+            row = next(row for row in store.rows() if row["label"] == "yes")
             sample_id = row["sample_id"]
 
             self.assertEqual(
@@ -51,7 +66,9 @@ class DatasetManifestTests(unittest.TestCase):
             materialized = data_dir / "custom-words" / "yes" / f"{sample_id}.wav"
             self.assertTrue(materialized.is_file())
             entries = _read_jsonl(data_dir / "manifests" / "train_manifest.jsonl")
+            self.assertEqual([entry["label"] for entry in entries], ["yes"])
             self.assertEqual(entries[0]["audio_filepath"], str(materialized.resolve()))
+            self.assertFalse((data_dir / "custom-words" / "no").exists())
 
     def test_build_split_manifests_includes_configured_google_words_except_background_noise(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

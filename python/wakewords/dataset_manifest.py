@@ -57,15 +57,18 @@ def build_split_manifests(
 
 def _load_grouped_entries(*, data_dir: Path, google_data_dir: Path | None) -> dict[str, list[dict[str, object]]]:
     grouped: dict[str, list[dict[str, object]]] = {}
-    require_materialized_files(
-        [data_dir / "custom_words.parquet"],
-        context="building manifests from custom words",
-        include_hint="data/custom_words.parquet",
-    )
-    for entry in _materialize_custom_word_entries(data_dir):
+    config_path = data_dir.parent / "config.json"
+    configured_custom_labels = _load_configured_custom_labels(config_path)
+    if configured_custom_labels:
+        require_materialized_files(
+            [data_dir / "custom_words.parquet"],
+            context="building manifests from custom words",
+            include_hint="data/custom_words.parquet",
+        )
+    for entry in _materialize_custom_word_entries(data_dir, configured_custom_labels):
         grouped.setdefault(str(entry["label"]), []).append(entry)
 
-    configured_google_words = _load_configured_google_words(data_dir.parent / "config.json")
+    configured_google_words = _load_configured_google_words(config_path)
     speech_commands_dir = google_data_dir or _default_google_speech_commands_dir(data_dir)
     if configured_google_words:
         google_audio_paths = _configured_google_audio_paths(speech_commands_dir, configured_google_words)
@@ -79,15 +82,16 @@ def _load_grouped_entries(*, data_dir: Path, google_data_dir: Path | None) -> di
     return grouped
 
 
-def _materialize_custom_word_entries(data_dir: Path) -> list[dict[str, object]]:
+def _materialize_custom_word_entries(data_dir: Path, labels: list[str]) -> list[dict[str, object]]:
     parquet_path = data_dir / "custom_words.parquet"
     materialized_dir = data_dir / "custom-words"
     if materialized_dir.exists():
         shutil.rmtree(materialized_dir)
-    if not parquet_path.exists():
+    if not labels or not parquet_path.exists():
         return []
 
     rows = CustomWordStore(parquet_path).rows()
+    label_set = set(labels)
 
     entries: list[dict[str, object]] = []
     for row in rows:
@@ -96,6 +100,8 @@ def _materialize_custom_word_entries(data_dir: Path) -> list[dict[str, object]]:
         audio_bytes = row.get("audio_bytes")
         duration_ms = row.get("duration_ms")
         if not isinstance(label, str) or not isinstance(sample_id, str):
+            continue
+        if label not in label_set:
             continue
         if not isinstance(audio_bytes, bytes) or not isinstance(duration_ms, int):
             continue
@@ -150,6 +156,23 @@ def _load_configured_google_words(config_path: Path) -> list[str]:
     if not isinstance(google_words, list):
         return []
     return [word for word in google_words if isinstance(word, str) and word]
+
+
+def _load_configured_custom_labels(config_path: Path) -> list[str]:
+    if not config_path.exists():
+        return []
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    custom_words = config.get("custom_words")
+    if not isinstance(custom_words, list):
+        return []
+    labels: list[str] = []
+    for word in custom_words:
+        if not isinstance(word, dict):
+            continue
+        label = word.get("label")
+        if isinstance(label, str) and label:
+            labels.append(label)
+    return labels
 
 
 def _load_google_speech_command_entries(dataset_dir: Path, words: list[str]) -> list[dict[str, object]]:
