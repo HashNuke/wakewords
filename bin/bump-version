@@ -53,4 +53,4 @@ package_json_path.write_text(json.dumps(package_json, indent=2) + "\n", encoding
 print(f"bumped version {old_version} -> {new_version}")
 PY
 
-npm --prefix "${repo_root}" install --package-lock-only
+npm --prefix "${repo_root}" install --package-lock-only --os=linux --cpu=x64 --libc=glibc
