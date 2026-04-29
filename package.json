@@ -1,0 +1,8 @@
+{
+  "name": "wakewords-node-workspace",
+  "private": true,
+  "workspaces": [
+    "js",
+    "demo"
+  ]
+}

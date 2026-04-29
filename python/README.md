@@ -107,7 +107,7 @@ You can now use `model.onnx` and `labels.json` for inference with the `wakewords
 
 ## More Details
 
-We have other commands like `checkdata`. See [`../docs/USAGE.md`](../docs/USAGE.md) for command options, split ratios, augmentation details, cleaning commands, and training notes.
+We have other commands like `checkdata`. See [`../docs/python.md`](../docs/python.md) for command options, split ratios, augmentation details, cleaning commands, and training notes.
 
 ## License
 

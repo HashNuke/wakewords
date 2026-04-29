@@ -1,4 +1,4 @@
-# Usage
+# Python Usage
 
 ## Project Init
 
@@ -123,7 +123,7 @@ uv run wakewords generate --concurrency 4
 ```
 
 Custom TTS providers can be registered from `config.json`. See
-`docs/custom-providers.md`.
+`custom-providers.md`.
 
 By default, generated clean audio and metadata are written to the project's
 `data/custom_words.parquet`. The Parquet rows include the WAV bytes, label,

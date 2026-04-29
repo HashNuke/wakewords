@@ -1,147 +1,68 @@
-# wakewords
+# `wakewords` - wakeword detection for your apps & webpages
 
-Build custom wakeword and command-word datasets from TTS-generated words plus Google Speech Commands.
+> This means your own *"alexa"*, *"hey siri"* or *"hey google"* in your apps.
 
-## Quick Start
+* Detect wakewords in the browser with JavaScript (or nodejs)
+* Detect wakewords in your ios & mac apps in Swift
+* Train your own custom wakewords detection model in 30 min (Yes, you can do "Jarvis", "Computer", etc)
 
-### Create A Project
-
-Initialize the project layout:
-
-```sh
-uv run wakewords init
-```
-
-This creates `data/`, `background_audio/`, `config.json`, and a project `.gitignore` entry for downloaded Google Speech Commands data.
-
-Edit `config.json` and put your wake words in `custom_words`.
-
-### Set Up TTS
-
-The default TTS provider is Cartesia. Set your API key before generating audio:
+## Quick Start: Detect wakewords in your web pages
 
 ```sh
-export CARTESIA_API_KEY=your-api-key
+npm install wakewords
 ```
-
-Custom TTS providers can be registered from `config.json`. See [`docs/custom-providers.md`](docs/custom-providers.md).
-
-### Generate English Data
-
-Generate clean samples for the `custom_words` in the project `config.json` using every available English voice:
-
-```sh
-uv run wakewords generate --lang en --all-voices
-```
-
-Generated audio and metadata are written to the project's
-`data/custom_words.parquet`.
-
-### Augment The Dataset
-
-Create noisy tempo variants for the generated clean samples:
-
-```sh
-uv run wakewords augment
-```
-
-By default, augmentation targets about `4000` total samples per word.
-
-### Check Data
-
-Print duration and no-speech stats for generated and augmented rows:
-
-```sh
-uv run wakewords checkdata
-```
-
-Use `--generated` or `--augmented` to check only one source type. No-speech
-sample IDs are written to `no-speech.txt` in the project root.
-
-### Train
-
-Download Google Speech Commands, build manifests, and preview the training run:
-
-```sh
-uv run wakewords download
-uv run wakewords manifest
-uv run wakewords train --dry-run
-```
-
-Run training on Linux with NeMo installed:
-
-```sh
-uv run wakewords train
-```
-
-Training uses NeMo's `from_pretrained()` by default. To train from a local `.nemo` file instead, pass `--base-model-path`.
-
-### Export
-
-Export the latest completed training run into a project-level model bundle:
-
-```sh
-uv run wakewords export --format onnx
-```
-
-This writes `models/model.onnx` for inference, plus
-`models/last_checkpoint/last.ckpt`,
-`models/last_checkpoint/train_config.json`, `models/labels.json`, and
-`models/export_config.json` when those source files are available. The
-checkpoint directory is kept ready for continued training with the original
-training settings.
-
-Resume from an exported checkpoint bundle with:
-
-```sh
-uv run wakewords train --from-checkpoint models/last_checkpoint/last.ckpt
-```
-
-That imports the checkpoint into a new `runs/<run-name>/` directory before
-training continues.
-
-### JavaScript Inference
-
-The `wakewords` npm package ships with a default ONNX model and labels so you can try inference without training first:
 
 ```js
-import { Wakewords } from "wakewords";
+import { Wakewords } from "wakewords/browser";
 
 const wakewords = await Wakewords.load();
+const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+const listener = wakewords.createListener({ stream });
+
+listener.addEventListener("prediction", (event) => {
+  console.log(event.detail.label, event.detail.probability);
+});
+
+await listener.start();
 ```
 
-Use `wakewords/browser` for browser microphone listening and `wakewords/node` for Node.js inference with filesystem paths. See [`docs/javascript-api.md`](docs/javascript-api.md).
+> The default model is trained for wakewords from Google Speech Commands dataset v2.
 
-### Swift Inference
+## Quick Start: Train for your own wakewords
 
-The repository also includes a Swift package under [`swift/`](swift) for ONNX inference with the same preprocessing pipeline used by the JavaScript library:
-
-```swift
-import Wakewords
-
-let wakewords = try Wakewords.load(modelPath: "/path/to/models/model.onnx")
-let result = try wakewords.predict(samples: samples, sampleRate: 16_000)
+```sh
+pip install wakewords
 ```
 
-The Swift package depends on the ONNX Runtime Swift package manager wrapper and is intended for local app-side inference against exported `model.onnx` bundles.
+> Use `uv run` for below commands if applicable to you.
 
-### Find Outputs
+```sh
+wakewords init
 
-Training artifacts are written under `runs/<run-name>/`:
+# Edit your custom wake words
+$EDITOR config.json
 
-- `train_config.json`
-- `checkpoints/`
-- `logs/`
-- `models/`
+export CARTESIA_API_KEY=your-api-key
 
-The final exported model is written under the `models/` directory of that specific training run.
+# Generates synthetic dataset
+wakewords generate --lang en --all-voices
+wakewords augment
 
-## More Details
+# Train your model
+wakewords download
+wakewords manifest
+wakewords train
 
-See [`docs/USAGE.md`](docs/USAGE.md) for command options, split ratios, augmentation details, cleaning commands, and training notes.
+# Export to onnx and use whereever
+wakewords export
+```
+
+## Docs
+
+* [JavaScript API](docs/javascript-api.md)
+* [Python training](python/README.md)
+* [Swift package](swift/README.md)
 
 ## License
 
 Copyright &copy; 2026 Akash Manohar John, under MIT License (See LICENSE file).
-
-**Background sounds:** The background audio embedded in this pypi package comes from the Google Speech Commands dataset and ships with this library for convenience. This is licensed under the same license as the dataset. The details are in the `README.md` file inside of the `wakewords/google_scd_background_noise` dir.

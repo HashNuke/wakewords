@@ -50,15 +50,13 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: js/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: js
         run: npm ci
 
       - name: Run tests
-        working-directory: js
-        run: npm test
+        run: npm test --workspace wakewords
 
   demo:
     name: Demo
@@ -72,15 +70,13 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: demo/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: demo
         run: npm ci
 
       - name: Build demo
-        working-directory: demo
-        run: npm run build
+        run: npm run build --workspace wakewords-demo
 
   publish-pypi:
     name: Publish to PyPI
@@ -140,12 +136,10 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
           cache: npm
-          cache-dependency-path: js/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: js
         run: npm ci
 
       - name: Publish package
-        working-directory: js
-        run: npm publish
+        run: npm publish --workspace wakewords
