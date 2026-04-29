@@ -7,6 +7,7 @@ import sys
 import tomllib
 from importlib import metadata
 from pathlib import Path
+from typing import Literal
 
 import fire
 
@@ -354,8 +355,12 @@ def _load_generate_voice_selection(*, config_path: Path) -> VoiceSelectionConfig
     if not isinstance(voice_selection, dict):
         raise ValueError("generate.voice_selection must be an object")
 
-    group_by = voice_selection.get("group_by")
-    if group_by != ["language", "gender"] and group_by != ["gender", "language"]:
+    raw_group_by = voice_selection.get("group_by")
+    if raw_group_by == ["language", "gender"]:
+        group_by: tuple[Literal["language", "gender"], Literal["language", "gender"]] = ("language", "gender")
+    elif raw_group_by == ["gender", "language"]:
+        group_by = ("gender", "language")
+    else:
         raise ValueError('generate.voice_selection.group_by must be ["language", "gender"]')
 
     languages = voice_selection.get("languages")
@@ -375,7 +380,7 @@ def _load_generate_voice_selection(*, config_path: Path) -> VoiceSelectionConfig
         raise ValueError("generate.voice_selection.limit_per_group must be >= 1")
 
     return VoiceSelectionConfig(
-        group_by=(group_by[0], group_by[1]),
+        group_by=group_by,
         languages=parsed_languages,
         genders=tuple(genders),
         limit_per_group=limit_per_group,
