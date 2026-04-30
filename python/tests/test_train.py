@@ -145,6 +145,8 @@ class TrainTests(unittest.TestCase):
             self.assertEqual(evaluation.run_dir, run_dir)
             self.assertEqual(evaluation.checkpoint_path, checkpoint)
             self.assertEqual(evaluation.test_manifest_path, test_manifest)
+            self.assertEqual(evaluation.report_summary_path, run_dir / "test_report_summary.json")
+            self.assertEqual(evaluation.report_rows_path, run_dir / "test_report.jsonl")
             self.assertIsNone(evaluation.metrics)
 
     def test_cli_test_dry_run_prints_evaluation_json(self) -> None:
@@ -190,6 +192,8 @@ class TrainTests(unittest.TestCase):
             self.assertEqual(output["run_dir"], str(run_dir))
             self.assertEqual(output["checkpoint_path"], str(checkpoint))
             self.assertEqual(output["test_manifest_path"], str(test_manifest))
+            self.assertEqual(output["report_summary_path"], str(run_dir / "test_report_summary.json"))
+            self.assertEqual(output["report_rows_path"], str(run_dir / "test_report.jsonl"))
             self.assertIsNone(output["metrics"])
 
     def test_train_model_dry_run_records_explicit_base_model_path(self) -> None:

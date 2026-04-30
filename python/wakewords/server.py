@@ -90,7 +90,7 @@ def _existing_export_bundle(*, project_dir: Path, output_dir: Path) -> ExportBun
 
 def create_app(*, config: ServeConfig, bundle: ExportBundle) -> Any:
     try:
-        from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+        from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
         from fastapi.responses import FileResponse, HTMLResponse
         from fastapi.staticfiles import StaticFiles
     except ImportError as exc:
@@ -118,6 +118,10 @@ def create_app(*, config: ServeConfig, bundle: ExportBundle) -> Any:
     @app.get("/record", response_class=HTMLResponse)
     def record_page() -> str:
         return _read_asset("record.html")
+
+    @app.get("/test-report", response_class=HTMLResponse)
+    def test_report_page() -> str:
+        return _test_report_html()
 
     @app.get("/model.onnx")
     def model() -> FileResponse:
@@ -161,7 +165,45 @@ def create_app(*, config: ServeConfig, bundle: ExportBundle) -> Any:
         path.write_bytes(audio_bytes)
         return {"path": str(path)}
 
+    @app.get("/api/test-report")
+    def test_report(offset: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=500)) -> dict[str, Any]:
+        report = _latest_test_report(config.project_dir, config.runs_dir)
+        if report is None:
+            raise HTTPException(status_code=404, detail="No test report found. Run `wakewords test` first.")
+        rows = _read_report_rows(report.rows_path, offset=offset, limit=limit)
+        return {
+            "summary": report.summary,
+            "offset": offset,
+            "limit": limit,
+            "total": report.total,
+            "rows": [_report_row_response(row) for row in rows],
+        }
+
+    @app.get("/api/test-report/audio/{index}")
+    def test_report_audio(index: int) -> FileResponse:
+        report = _latest_test_report(config.project_dir, config.runs_dir)
+        if report is None:
+            raise HTTPException(status_code=404, detail="No test report found. Run `wakewords test` first.")
+        row = _read_report_row(report.rows_path, index=index)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Report row not found")
+        audio_filepath = row.get("audio_filepath")
+        if not isinstance(audio_filepath, str):
+            raise HTTPException(status_code=404, detail="Report row has no audio file")
+        audio_path = Path(audio_filepath)
+        if not audio_path.is_file():
+            raise HTTPException(status_code=404, detail="Audio file not found")
+        return FileResponse(audio_path, media_type="audio/wav")
+
     return app
+
+
+@dataclass(frozen=True)
+class _TestReport:
+    summary_path: Path
+    rows_path: Path
+    summary: dict[str, Any]
+    total: int
 
 
 class OnnxWakewordModel:
@@ -277,6 +319,158 @@ def _nemo_mfcc_preprocessor() -> Any:
 
 def _read_asset(name: str) -> str:
     return resources.files("wakewords.playground").joinpath(name).read_text(encoding="utf-8")
+
+
+def _test_report_html() -> str:
+    return """<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>wakewords test report</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/">wakewords</a>
+        <nav class="nav" aria-label="playground">
+          <a href="/">playground</a>
+          <a href="/record">record</a>
+          <a href="/test-report" aria-current="page">test report</a>
+        </nav>
+      </header>
+      <section class="panel report-panel">
+        <h1>Test report</h1>
+        <div id="reportSummary" class="hint">Loading...</div>
+        <div class="controls">
+          <button id="prevPage" type="button">Prev</button>
+          <button id="nextPage" type="button">Next</button>
+          <div id="pageStatus" class="status"></div>
+        </div>
+        <div class="report-table-wrap">
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Actual</th>
+                <th>Predicted</th>
+                <th>Confidence</th>
+                <th>Audio</th>
+              </tr>
+            </thead>
+            <tbody id="reportRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script>
+      const limit = 100;
+      let offset = 0;
+      let total = 0;
+      const summaryEl = document.getElementById('reportSummary');
+      const rowsEl = document.getElementById('reportRows');
+      const pageStatus = document.getElementById('pageStatus');
+      const prevPage = document.getElementById('prevPage');
+      const nextPage = document.getElementById('nextPage');
+
+      function pct(value) {
+        return `${(Number(value || 0) * 100).toFixed(2)}%`;
+      }
+
+      function metric(summary, key) {
+        const first = (summary.metrics || [])[0] || {};
+        return first[key];
+      }
+
+      async function loadPage(nextOffset) {
+        const response = await fetch(`/api/test-report?offset=${nextOffset}&limit=${limit}`);
+        if (!response.ok) {
+          summaryEl.textContent = await response.text();
+          return;
+        }
+        const report = await response.json();
+        offset = report.offset;
+        total = report.total;
+        const summary = report.summary || {};
+        summaryEl.textContent = `samples ${summary.sample_count || total}, correct ${summary.correct_count || 0}, accuracy ${pct(metric(summary, 'test_acc_micro_top_1'))}, macro ${pct(metric(summary, 'test_acc_macro'))}, loss ${Number(metric(summary, 'test_loss') || 0).toFixed(4)}`;
+        rowsEl.replaceChildren(...report.rows.map((row) => {
+          const tr = document.createElement('tr');
+          if (!row.correct) tr.className = 'incorrect';
+          tr.innerHTML = `
+            <td>${row.index}</td>
+            <td>${row.actual_label || ''}</td>
+            <td>${row.predicted_label || ''}</td>
+            <td>${pct(row.probability)}</td>
+            <td><audio controls preload="none" src="${row.audio_url}"></audio></td>
+          `;
+          return tr;
+        }));
+        pageStatus.textContent = `${offset + 1}-${Math.min(offset + limit, total)} of ${total}`;
+        prevPage.disabled = offset <= 0;
+        nextPage.disabled = offset + limit >= total;
+      }
+
+      prevPage.addEventListener('click', () => loadPage(Math.max(0, offset - limit)));
+      nextPage.addEventListener('click', () => loadPage(offset + limit));
+      loadPage(0);
+    </script>
+  </body>
+</html>"""
+
+
+def _latest_test_report(project_dir: Path, runs_dir: Path) -> _TestReport | None:
+    resolved_runs_dir = runs_dir if runs_dir.is_absolute() else project_dir / runs_dir
+    if not resolved_runs_dir.is_dir():
+        return None
+    candidates = sorted(
+        resolved_runs_dir.glob("*/test_report_summary.json"),
+        key=lambda path: (path.stat().st_mtime, path.name),
+        reverse=True,
+    )
+    for summary_path in candidates:
+        rows_path = summary_path.with_name("test_report.jsonl")
+        if not rows_path.is_file():
+            continue
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        total = summary.get("sample_count")
+        if not isinstance(total, int):
+            total = _count_jsonl_rows(rows_path)
+        return _TestReport(summary_path=summary_path, rows_path=rows_path, summary=summary, total=total)
+    return None
+
+
+def _read_report_rows(path: Path, *, offset: int, limit: int) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with path.open(encoding="utf-8") as file:
+        for index, line in enumerate(file):
+            if index < offset:
+                continue
+            if len(rows) >= limit:
+                break
+            if line.strip():
+                rows.append(json.loads(line))
+    return rows
+
+
+def _read_report_row(path: Path, *, index: int) -> dict[str, Any] | None:
+    if index < 0:
+        return None
+    with path.open(encoding="utf-8") as file:
+        for row_index, line in enumerate(file):
+            if row_index == index and line.strip():
+                return json.loads(line)
+    return None
+
+
+def _report_row_response(row: dict[str, Any]) -> dict[str, Any]:
+    index = row.get("index")
+    return {**row, "audio_url": f"/api/test-report/audio/{index}"}
+
+
+def _count_jsonl_rows(path: Path) -> int:
+    with path.open(encoding="utf-8") as file:
+        return sum(1 for line in file if line.strip())
 
 
 def _load_labels(labels_path: Path | None) -> list[str]:

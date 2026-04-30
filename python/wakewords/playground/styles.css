@@ -206,6 +206,41 @@ select {
   font-size: 14px;
 }
 
+.report-panel {
+  margin-top: 24px;
+}
+
+.report-table-wrap {
+  overflow-x: auto;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.report-table th,
+.report-table td {
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  padding: 8px;
+  text-align: left;
+}
+
+.report-table th {
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.report-table tr.incorrect {
+  background: rgba(255, 80, 80, 0.12);
+}
+
+.report-table audio {
+  width: 220px;
+  max-width: 42vw;
+}
+
 .recording {
   border-color: var(--neon);
   box-shadow: 0 0 12px rgba(57, 255, 136, 0.8);

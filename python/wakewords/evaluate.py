@@ -4,6 +4,7 @@ import importlib.util
 import json
 import sys
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,8 @@ class TestEvaluation:
     train_config_path: Path
     checkpoint_path: Path
     test_manifest_path: Path
+    report_summary_path: Path
+    report_rows_path: Path
     metrics: list[dict[str, Any]] | None
 
     def to_json(self) -> str:
@@ -25,6 +28,8 @@ class TestEvaluation:
                 "train_config_path": str(self.train_config_path),
                 "checkpoint_path": str(self.checkpoint_path),
                 "test_manifest_path": str(self.test_manifest_path),
+                "report_summary_path": str(self.report_summary_path),
+                "report_rows_path": str(self.report_rows_path),
                 "metrics": _json_safe(self.metrics),
             },
             indent=2,
@@ -82,9 +87,11 @@ def test_model(
         include_hint="data/**/*.wav",
     )
 
+    report_summary_path = source.run_dir / "test_report_summary.json"
+    report_rows_path = source.run_dir / "test_report.jsonl"
     metrics = None
     if not dry_run:
-        metrics = _run_nemo_test(
+        metrics, samples = _run_nemo_test(
             model_name=model_name,
             base_model_path=base_model_path,
             checkpoint_path=source.checkpoint_path,
@@ -95,12 +102,24 @@ def test_model(
             accelerator=accelerator if accelerator is not None else str(training.get("accelerator", "auto")),
             devices=devices if devices is not None else training.get("devices", "auto"),
         )
+        _write_test_report(
+            report_summary_path=report_summary_path,
+            report_rows_path=report_rows_path,
+            run_dir=source.run_dir,
+            train_config_path=source.train_config_path,
+            checkpoint_path=source.checkpoint_path,
+            test_manifest_path=manifest_path,
+            metrics=metrics,
+            samples=samples,
+        )
 
     return TestEvaluation(
         run_dir=source.run_dir,
         train_config_path=source.train_config_path,
         checkpoint_path=source.checkpoint_path,
         test_manifest_path=manifest_path,
+        report_summary_path=report_summary_path,
+        report_rows_path=report_rows_path,
         metrics=metrics,
     )
 
@@ -142,7 +161,7 @@ def _run_nemo_test(
     num_workers: int,
     accelerator: str,
     devices: int | str,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     if sys.platform == "darwin":
         raise RuntimeError(
             "Test evaluation is not supported on macOS because NeMo's ASR dependency chain does not publish macOS wheels. "
@@ -172,7 +191,94 @@ def _run_nemo_test(
     )
     trainer = Trainer(accelerator=accelerator, devices=devices, logger=False)
     results = trainer.test(model, ckpt_path=str(checkpoint_path), verbose=True)
-    return [dict(result) for result in results]
+    return [dict(result) for result in results], _predict_test_samples(model=model, labels=labels, manifest_path=test_manifest_path)
+
+
+def _predict_test_samples(*, model: Any, labels: list[str], manifest_path: Path) -> list[dict[str, Any]]:
+    import torch
+
+    manifest_entries = _read_manifest_entries(manifest_path)
+    samples: list[dict[str, Any]] = []
+    model.eval()
+    device = next(model.parameters()).device
+    offset = 0
+    with torch.no_grad():
+        for batch in model.test_dataloader():
+            audio_signal = batch[0].to(device)
+            audio_signal_length = batch[1].to(device)
+            actual_ids = batch[2].detach().cpu().view(-1).tolist()
+            logits = model(input_signal=audio_signal, input_signal_length=audio_signal_length)
+            if isinstance(logits, tuple):
+                logits = logits[0]
+            probabilities = torch.softmax(logits.detach().cpu(), dim=-1)
+            predicted_ids = torch.argmax(probabilities, dim=-1).view(-1).tolist()
+            for row_index, (actual_id, predicted_id) in enumerate(zip(actual_ids, predicted_ids, strict=False)):
+                manifest_entry = manifest_entries[offset + row_index]
+                actual_label = _label_at(labels, int(actual_id))
+                predicted_label = _label_at(labels, int(predicted_id))
+                probability = float(probabilities[row_index, int(predicted_id)].item())
+                samples.append(
+                    {
+                        "index": offset + row_index,
+                        "audio_filepath": manifest_entry["audio_filepath"],
+                        "actual_label": actual_label,
+                        "manifest_label": manifest_entry["label"],
+                        "predicted_label": predicted_label,
+                        "probability": probability,
+                        "correct": actual_label == predicted_label,
+                    }
+                )
+            offset += len(actual_ids)
+    return samples
+
+
+def _read_manifest_entries(path: Path) -> list[dict[str, str]]:
+    entries: list[dict[str, str]] = []
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        item = json.loads(line)
+        audio_filepath = item.get("audio_filepath")
+        label = item.get("label")
+        if not isinstance(audio_filepath, str) or not isinstance(label, str):
+            raise ValueError(f"Invalid manifest entry in {path}:{line_number}")
+        entries.append({"audio_filepath": audio_filepath, "label": label})
+    return entries
+
+
+def _label_at(labels: list[str], index: int) -> str:
+    if 0 <= index < len(labels):
+        return labels[index]
+    return f"class_{index}"
+
+
+def _write_test_report(
+    *,
+    report_summary_path: Path,
+    report_rows_path: Path,
+    run_dir: Path,
+    train_config_path: Path,
+    checkpoint_path: Path,
+    test_manifest_path: Path,
+    metrics: list[dict[str, Any]],
+    samples: list[dict[str, Any]],
+) -> None:
+    report_summary = {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "run_dir": str(run_dir),
+        "train_config_path": str(train_config_path),
+        "checkpoint_path": str(checkpoint_path),
+        "test_manifest_path": str(test_manifest_path),
+        "report_rows_path": str(report_rows_path),
+        "metrics": _json_safe(metrics),
+        "sample_count": len(samples),
+        "correct_count": sum(1 for sample in samples if sample.get("correct") is True),
+    }
+    report_summary_path.write_text(json.dumps(report_summary, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+    report_rows_path.write_text(
+        "".join(json.dumps(_json_safe(sample), ensure_ascii=True, sort_keys=True) + "\n" for sample in samples),
+        encoding="utf-8",
+    )
 
 
 def _latest_run_dir(runs_dir: Path) -> Path:
