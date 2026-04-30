@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -70,6 +71,32 @@ class ExportTests(unittest.TestCase):
             self.assertNotIn("source", export_config)
             self.assertNotIn(str(project_dir), json.dumps(export_config))
             self.assertNotIn(str(project_dir), json.dumps(train_config))
+
+    def test_export_model_uses_latest_model_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir).resolve()
+            old_run = _create_run(project_dir, "zz-custom-name")
+            latest_run = _create_run(project_dir, "aa-custom-name")
+            old_model = next((old_run / "models").glob("*.nemo"))
+            latest_model = next((latest_run / "models").glob("*.nemo"))
+            os.utime(old_model, (100, 100))
+            os.utime(latest_model, (200, 200))
+            os.utime(old_run, (300, 300))
+            os.utime(latest_run, (50, 50))
+
+            with mock.patch("wakewords.export._export_onnx", side_effect=_fake_export_onnx) as export_onnx:
+                export_model(
+                    project_dir=project_dir,
+                    runs_dir=Path("runs"),
+                    run_dir=None,
+                    model_path=None,
+                    checkpoint_path=None,
+                    output_dir=Path("models"),
+                    format="onnx",
+                    overwrite=False,
+                )
+
+            self.assertEqual(export_onnx.call_args.args[0], latest_model)
 
     def test_export_model_refuses_to_overwrite_without_flag(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -167,24 +194,26 @@ class ExportTests(unittest.TestCase):
                 },
             )
 
-    def test_export_model_rejects_checkpoint_with_local_path(self) -> None:
+    def test_export_model_sanitizes_checkpoint_local_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_dir = Path(tmp_dir).resolve()
             run_dir = _create_run(project_dir, "leaky-run")
             (run_dir / "checkpoints" / "last.ckpt").write_text(f"checkpoint from {project_dir}\n", encoding="utf-8")
 
             with mock.patch("wakewords.export._export_onnx", side_effect=_fake_export_onnx):
-                with self.assertRaisesRegex(ValueError, "local path information"):
-                    export_model(
-                        project_dir=project_dir,
-                        runs_dir=Path("runs"),
-                        run_dir=None,
-                        model_path=None,
-                        checkpoint_path=None,
-                        output_dir=Path("models"),
-                        format="onnx",
-                        overwrite=False,
-                    )
+                export_model(
+                    project_dir=project_dir,
+                    runs_dir=Path("runs"),
+                    run_dir=None,
+                    model_path=None,
+                    checkpoint_path=None,
+                    output_dir=Path("models"),
+                    format="onnx",
+                    overwrite=False,
+                )
+
+            checkpoint = (project_dir / "models" / "last_checkpoint" / "last.ckpt").read_text(encoding="utf-8")
+            self.assertNotIn(str(project_dir), checkpoint)
 
     def test_cli_serve_starts_playground(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

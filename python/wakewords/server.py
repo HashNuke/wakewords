@@ -50,17 +50,19 @@ def serve_playground(
         port=port,
         open_browser=open_browser,
     )
-    bundle = export_model(
-        project_dir=config.project_dir,
-        runs_dir=config.runs_dir,
-        run_dir=None,
-        model_path=None,
-        checkpoint_path=None,
-        output_dir=config.output_dir,
-        format="onnx",
-        overwrite=True,
-    )
-    app = create_app(config=config, bundle=bundle)
+    bundle = _existing_export_bundle(project_dir=config.project_dir, output_dir=config.output_dir)
+    if bundle is None or _export_bundle_stale(config=config, bundle=bundle):
+        export_model(
+            project_dir=config.project_dir,
+            runs_dir=config.runs_dir,
+            run_dir=None,
+            model_path=None,
+            checkpoint_path=None,
+            output_dir=config.output_dir,
+            format="onnx",
+            overwrite=True,
+        )
+    app = create_app(config=config)
     if open_browser:
         threading.Timer(0.75, lambda: webbrowser.open(f"http://{host}:{port}/")).start()
     uvicorn.run(app, host=host, port=port)
@@ -88,7 +90,30 @@ def _existing_export_bundle(*, project_dir: Path, output_dir: Path) -> ExportBun
     )
 
 
-def create_app(*, config: ServeConfig, bundle: ExportBundle) -> Any:
+def _export_bundle_stale(*, config: ServeConfig, bundle: ExportBundle) -> bool:
+    if not bundle.model_path.is_file():
+        return True
+    if bundle.labels_path is not None and not bundle.labels_path.is_file():
+        return True
+    latest_model = _latest_source_model(config.project_dir, config.runs_dir)
+    return latest_model.stat().st_mtime_ns > bundle.model_path.stat().st_mtime_ns
+
+
+def _latest_source_model(project_dir: Path, runs_dir: Path) -> Path:
+    resolved_runs_dir = runs_dir if runs_dir.is_absolute() else project_dir / runs_dir
+    candidates = [
+        model
+        for run_dir in resolved_runs_dir.iterdir()
+        if run_dir.is_dir() and (run_dir / "train_config.json").is_file()
+        for model in (run_dir / "models").glob("*.nemo")
+        if model.is_file()
+    ]
+    if not candidates:
+        raise FileNotFoundError(f"No completed training runs found in: {resolved_runs_dir}")
+    return max(candidates, key=lambda path: (path.stat().st_mtime, path.name))
+
+
+def create_app(*, config: ServeConfig) -> Any:
     try:
         from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
         from fastapi.responses import FileResponse, HTMLResponse
@@ -98,9 +123,14 @@ def create_app(*, config: ServeConfig, bundle: ExportBundle) -> Any:
     globals()["UploadFile"] = UploadFile
 
     app = FastAPI(title="wakewords playground")
-    model_labels = _load_labels(bundle.labels_path)
-    inference_cache: dict[str, OnnxWakewordModel] = {}
+    inference_cache: dict[tuple[Path, int, Path | None, int | None], OnnxWakewordModel] = {}
     static_dir = resources.files("wakewords.playground")
+
+    def current_bundle() -> ExportBundle:
+        active_bundle = _existing_export_bundle(project_dir=config.project_dir, output_dir=config.output_dir)
+        if active_bundle is None:
+            raise FileNotFoundError(f"Missing exported model bundle: {config.output_dir}")
+        return active_bundle
 
     @app.middleware("http")
     async def no_cache_playground_assets(request: Any, call_next: Any) -> Any:
@@ -125,25 +155,29 @@ def create_app(*, config: ServeConfig, bundle: ExportBundle) -> Any:
 
     @app.get("/model.onnx")
     def model() -> FileResponse:
-        return FileResponse(bundle.model_path)
+        return FileResponse(current_bundle().model_path)
 
     @app.get("/labels.json")
     @app.get("/api/labels")
     def labels() -> list[str]:
-        return model_labels
+        return _load_labels(current_bundle().labels_path)
 
     @app.get("/api/labels/metadata")
     def labels_metadata() -> dict[str, list[str]]:
+        model_labels = _load_labels(current_bundle().labels_path)
         return _labels_metadata(project_dir=config.project_dir, model_labels=model_labels)
 
     @app.post("/api/infer")
     async def infer(audio: UploadFile = File(...)) -> dict[str, Any]:
         try:
             audio_bytes = await audio.read()
-            inference = inference_cache.get("model")
+            active_bundle = current_bundle()
+            cache_key = _inference_cache_key(active_bundle)
+            inference = inference_cache.get(cache_key)
             if inference is None:
-                inference = OnnxWakewordModel(model_path=bundle.model_path, labels_path=bundle.labels_path)
-                inference_cache["model"] = inference
+                inference_cache.clear()
+                inference = OnnxWakewordModel(model_path=active_bundle.model_path, labels_path=active_bundle.labels_path)
+                inference_cache[cache_key] = inference
             return inference.predict(audio_bytes)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -252,6 +286,11 @@ class OnnxWakewordModel:
                     f"Unsupported ONNX input {name!r}. Expected audio/signal and optional length inputs."
                 )
         return feeds
+
+
+def _inference_cache_key(bundle: ExportBundle) -> tuple[Path, int, Path | None, int | None]:
+    labels_mtime = bundle.labels_path.stat().st_mtime_ns if bundle.labels_path is not None and bundle.labels_path.is_file() else None
+    return (bundle.model_path, bundle.model_path.stat().st_mtime_ns, bundle.labels_path, labels_mtime)
 
 
 def _audio_input(waveform: Any, *, shape: list[Any]) -> Any:

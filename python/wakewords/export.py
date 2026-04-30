@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import shutil
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -95,9 +95,11 @@ def export_model(
     if export_format == "onnx":
         _export_onnx(source.model_path, destination_model)
 
+    forbidden_paths = _forbidden_path_strings(project_dir=project_dir, source=source)
+
     if destination_checkpoint is not None:
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source.checkpoint_path, destination_checkpoint)
+        _write_portable_checkpoint(source.checkpoint_path, destination_checkpoint, forbidden_paths=forbidden_paths)
 
     if destination_train_config is not None:
         _write_portable_train_config(source.train_config_path, destination_train_config)
@@ -158,7 +160,8 @@ def _resolve_export_source(
     checkpoint_path: Path | None,
 ) -> _ExportSource:
     if run_dir is None and model_path is None:
-        run_dir = _latest_run_dir(runs_dir)
+        model_path = _latest_run_model(runs_dir)
+        run_dir = model_path.parent.parent
     if run_dir is not None:
         if not run_dir.is_dir():
             raise FileNotFoundError(f"Missing run directory: {run_dir}")
@@ -183,13 +186,15 @@ def _resolve_export_source(
     )
 
 
-def _latest_run_dir(runs_dir: Path) -> Path:
+def _latest_run_model(runs_dir: Path) -> Path:
     if not runs_dir.is_dir():
         raise FileNotFoundError(f"Missing runs directory: {runs_dir}")
     candidates = [
-        path
+        model
         for path in runs_dir.iterdir()
-        if path.is_dir() and (path / "models").is_dir() and any((path / "models").glob("*.nemo"))
+        if path.is_dir() and (path / "train_config.json").is_file()
+        for model in (path / "models").glob("*.nemo")
+        if model.is_file()
     ]
     if not candidates:
         raise FileNotFoundError(f"No completed training runs found in: {runs_dir}")
@@ -247,6 +252,78 @@ def _write_portable_train_config(source_path: Path, destination_path: Path) -> N
             key: value for key, value in training.items() if key in portable_training_keys
         }
     destination_path.write_text(json.dumps(portable_config, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+
+
+def _write_portable_checkpoint(source_path: Path, destination_path: Path, *, forbidden_paths: set[str]) -> None:
+    if importlib.util.find_spec("torch") is not None:
+        try:
+            import torch
+
+            checkpoint = torch.load(source_path, map_location="cpu", weights_only=False)
+            checkpoint = _sanitize_checkpoint_value(checkpoint, forbidden_paths=forbidden_paths, memo={})
+            torch.save(checkpoint, destination_path)
+            return
+        except Exception:
+            if _looks_like_text_file(source_path):
+                _write_sanitized_bytes(source_path, destination_path, forbidden_paths=forbidden_paths)
+                return
+            raise
+
+    _write_sanitized_bytes(source_path, destination_path, forbidden_paths=forbidden_paths)
+
+
+def _sanitize_checkpoint_value(value: Any, *, forbidden_paths: set[str], memo: dict[int, Any]) -> Any:
+    if isinstance(value, str):
+        return _sanitize_text(value, forbidden_paths=forbidden_paths)
+    if isinstance(value, Path):
+        return Path(_sanitize_text(str(value), forbidden_paths=forbidden_paths))
+    if isinstance(value, Mapping):
+        value_id = id(value)
+        if value_id in memo:
+            return memo[value_id]
+        sanitized: dict[Any, Any] = {}
+        memo[value_id] = sanitized
+        sanitized.update(
+            {
+                _sanitize_checkpoint_value(key, forbidden_paths=forbidden_paths, memo=memo): _sanitize_checkpoint_value(
+                    item, forbidden_paths=forbidden_paths, memo=memo
+                )
+                for key, item in value.items()
+            }
+        )
+        return sanitized
+    if isinstance(value, list):
+        value_id = id(value)
+        if value_id in memo:
+            return memo[value_id]
+        sanitized_list: list[Any] = []
+        memo[value_id] = sanitized_list
+        sanitized_list.extend(_sanitize_checkpoint_value(item, forbidden_paths=forbidden_paths, memo=memo) for item in value)
+        return sanitized_list
+    if isinstance(value, tuple):
+        return tuple(_sanitize_checkpoint_value(item, forbidden_paths=forbidden_paths, memo=memo) for item in value)
+    if isinstance(value, set):
+        return {_sanitize_checkpoint_value(item, forbidden_paths=forbidden_paths, memo=memo) for item in value}
+    return value
+
+
+def _write_sanitized_bytes(source_path: Path, destination_path: Path, *, forbidden_paths: set[str]) -> None:
+    data = source_path.read_bytes()
+    for forbidden_path in sorted(forbidden_paths, key=len, reverse=True):
+        forbidden_bytes = forbidden_path.encode()
+        data = data.replace(forbidden_bytes, b"x" * len(forbidden_bytes))
+    destination_path.write_bytes(data)
+
+
+def _sanitize_text(value: str, *, forbidden_paths: set[str]) -> str:
+    for forbidden_path in sorted(forbidden_paths, key=len, reverse=True):
+        value = value.replace(forbidden_path, "<local-path>")
+    return value
+
+
+def _looks_like_text_file(path: Path) -> bool:
+    sample = path.read_bytes()[:4096]
+    return b"\0" not in sample
 
 
 def _export_relative_path(path: Path, output_dir: Path) -> str:
