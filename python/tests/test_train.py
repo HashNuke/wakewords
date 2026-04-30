@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 from wakewords import cli
+from wakewords.evaluate import test_model as evaluate_test_model
 from wakewords.lfs import GitLfsPointerError
 from wakewords.train import DEFAULT_MODEL_NAME, train_model
 
@@ -101,6 +102,95 @@ class TrainTests(unittest.TestCase):
                     str(run_dir / "models" / f"{DEFAULT_MODEL_NAME}.nemo"),
                 ],
             )
+
+    def test_test_model_dry_run_resolves_latest_run_checkpoint_and_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir).resolve()
+            manifests_dir = project_dir / "data" / "manifests"
+            manifests_dir.mkdir(parents=True)
+            test_manifest = manifests_dir / "test_manifest.jsonl"
+            _write_manifest(test_manifest)
+            run_dir = project_dir / "runs" / "completed-run"
+            checkpoints_dir = run_dir / "checkpoints"
+            checkpoints_dir.mkdir(parents=True)
+            checkpoint = checkpoints_dir / "last.ckpt"
+            checkpoint.write_text("checkpoint", encoding="utf-8")
+            (run_dir / "train_config.json").write_text(
+                json.dumps(
+                    {
+                        "model_name": DEFAULT_MODEL_NAME,
+                        "base_model_path": None,
+                        "labels": ["yes", "unknown"],
+                        "manifests": {"test": str(test_manifest)},
+                        "training": {"batch_size": 2, "num_workers": 0, "accelerator": "cpu", "devices": 1},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            evaluation = evaluate_test_model(
+                project_dir=project_dir,
+                runs_dir=Path("runs"),
+                run_dir=None,
+                checkpoint_path=None,
+                test_manifest=None,
+                batch_size=None,
+                num_workers=None,
+                accelerator=None,
+                devices=None,
+                dry_run=True,
+            )
+
+            self.assertEqual(evaluation.run_dir, run_dir)
+            self.assertEqual(evaluation.checkpoint_path, checkpoint)
+            self.assertEqual(evaluation.test_manifest_path, test_manifest)
+            self.assertIsNone(evaluation.metrics)
+
+    def test_cli_test_dry_run_prints_evaluation_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir).resolve()
+            manifests_dir = project_dir / "data" / "manifests"
+            manifests_dir.mkdir(parents=True)
+            test_manifest = manifests_dir / "test_manifest.jsonl"
+            _write_manifest(test_manifest)
+            run_dir = project_dir / "runs" / "cli-test"
+            checkpoints_dir = run_dir / "checkpoints"
+            checkpoints_dir.mkdir(parents=True)
+            checkpoint = checkpoints_dir / "last.ckpt"
+            checkpoint.write_text("checkpoint", encoding="utf-8")
+            (run_dir / "train_config.json").write_text(
+                json.dumps(
+                    {
+                        "model_name": DEFAULT_MODEL_NAME,
+                        "labels": ["yes", "unknown"],
+                        "manifests": {"test": str(test_manifest)},
+                        "training": {"batch_size": 2, "num_workers": 0, "accelerator": "cpu", "devices": 1},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            stdout = io.StringIO()
+            argv = [
+                "wakewords",
+                "test",
+                "--project-dir",
+                tmp_dir,
+                "--run-dir",
+                str(run_dir),
+                "--dry-run",
+            ]
+
+            with mock.patch.object(cli.sys, "argv", argv):
+                with redirect_stdout(stdout):
+                    cli.main()
+
+            output = json.loads(stdout.getvalue())
+            self.assertEqual(output["run_dir"], str(run_dir))
+            self.assertEqual(output["checkpoint_path"], str(checkpoint))
+            self.assertEqual(output["test_manifest_path"], str(test_manifest))
+            self.assertIsNone(output["metrics"])
 
     def test_train_model_dry_run_records_explicit_base_model_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

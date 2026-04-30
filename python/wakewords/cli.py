@@ -17,6 +17,7 @@ from wakewords.clean import clean_dataset
 from wakewords.dataset_manifest import build_split_manifests
 from wakewords.detect import detect_wakeword, detect_wakeword_windows
 from wakewords.download import download_datasets
+from wakewords.evaluate import test_model
 from wakewords.export import export_model
 from wakewords.generate import generate_audio
 from wakewords.lfs import GitLfsPointerError
@@ -269,6 +270,36 @@ class DataTools:
 
         for output in run.paths():
             print(output)
+
+    def test(
+        self,
+        project_dir: str = ".",
+        runs_dir: str = "runs",
+        run_dir: str | None = None,
+        checkpoint_path: str | None = None,
+        test_manifest: str | None = None,
+        batch_size: int | None = None,
+        num_workers: int | None = None,
+        accelerator: str | None = None,
+        devices: int | str | None = None,
+        dry_run: bool = False,
+        verbose: bool = False,
+    ) -> None:
+        """Evaluate a trained checkpoint against the test manifest."""
+        _configure_logging(verbose=verbose)
+        evaluation = test_model(
+            project_dir=Path(project_dir),
+            runs_dir=Path(runs_dir),
+            run_dir=Path(run_dir) if run_dir else None,
+            checkpoint_path=Path(checkpoint_path) if checkpoint_path else None,
+            test_manifest=test_manifest,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            accelerator=accelerator,
+            devices=devices,
+            dry_run=dry_run,
+        )
+        print(evaluation.to_json())
 
     def export(
         self,
