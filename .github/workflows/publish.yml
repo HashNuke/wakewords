@@ -30,6 +30,9 @@ jobs:
         with:
           python-version-file: .python-version
 
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Install dependencies
         working-directory: python
         run: uv sync --dev
