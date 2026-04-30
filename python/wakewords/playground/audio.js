@@ -124,7 +124,11 @@ export function createWindowSampler(stream, context, seconds = 1.0) {
       return encodeWav(buffer, context.sampleRate);
     },
     ready() {
-      return buffer.length >= maxSamples * 0.75;
+      return buffer.length >= maxSamples;
+    },
+    stop() {
+      processor.disconnect();
+      source.disconnect();
     },
   };
 }

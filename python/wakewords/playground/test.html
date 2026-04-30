@@ -19,6 +19,17 @@
 
       <section class="controls">
         <button id="enableMic" type="button">Enable mic</button>
+        <form id="windowConfig" class="window-config">
+          <label>
+            Window seconds
+            <input id="windowSeconds" type="number" min="0.1" step="0.1" value="1" />
+          </label>
+          <label>
+            Step ms
+            <input id="stepMs" type="number" min="1" step="1" value="100" />
+          </label>
+          <button type="submit">Update</button>
+        </form>
         <label class="threshold-control">
           Threshold
           <input id="threshold" type="range" min="0" max="100" value="90" />

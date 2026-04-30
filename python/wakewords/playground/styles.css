@@ -44,7 +44,8 @@ a {
 
 button,
 select,
-input[type="range"] {
+input[type="range"],
+input[type="number"] {
   border: 1px solid var(--line);
   border-radius: 0;
   background: #000;
@@ -67,6 +68,12 @@ button:disabled {
 select {
   min-height: 42px;
   padding: 0 12px;
+}
+
+input[type="number"] {
+  min-height: 42px;
+  width: 92px;
+  padding: 0 10px;
 }
 
 .shell {
@@ -122,6 +129,25 @@ select {
   align-items: center;
   gap: 10px;
   padding: 0 12px;
+  border: 1px solid var(--line);
+  background: #000;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.window-config {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.window-config label {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
   border: 1px solid var(--line);
   background: #000;
   color: var(--muted);
