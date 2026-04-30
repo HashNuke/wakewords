@@ -17,6 +17,7 @@ def build_split_manifests(
     train_ratio: int,
     validate_ratio: int,
     test_ratio: int,
+    langs: list[str] | None = None,
     google_data_dir: Path | None = None,
     train_filename: str = "train_manifest.jsonl",
     validate_filename: str = "validation_manifest.jsonl",
@@ -33,7 +34,7 @@ def build_split_manifests(
         raise ValueError("At least one split ratio must be > 0.")
 
     data_dir.mkdir(parents=True, exist_ok=True)
-    grouped_entries = _load_grouped_entries(data_dir=data_dir, google_data_dir=google_data_dir)
+    grouped_entries = _load_grouped_entries(data_dir=data_dir, google_data_dir=google_data_dir, langs=langs)
     split_entries = {"train": [], "validate": [], "test": []}
 
     for entries in grouped_entries.values():
@@ -55,7 +56,7 @@ def build_split_manifests(
     return output_paths
 
 
-def _load_grouped_entries(*, data_dir: Path, google_data_dir: Path | None) -> dict[str, list[dict[str, object]]]:
+def _load_grouped_entries(*, data_dir: Path, google_data_dir: Path | None, langs: list[str] | None) -> dict[str, list[dict[str, object]]]:
     grouped: dict[str, list[dict[str, object]]] = {}
     config_path = data_dir.parent / "config.json"
     configured_custom_labels = _load_configured_custom_labels(config_path)
@@ -65,7 +66,7 @@ def _load_grouped_entries(*, data_dir: Path, google_data_dir: Path | None) -> di
             context="building manifests from custom words",
             include_hint="data/custom_words.parquet",
         )
-    for entry in _materialize_custom_word_entries(data_dir, configured_custom_labels):
+    for entry in _materialize_custom_word_entries(data_dir, configured_custom_labels, langs=langs):
         grouped.setdefault(str(entry["label"]), []).append(entry)
 
     configured_google_words = _load_configured_google_words(config_path)
@@ -82,7 +83,7 @@ def _load_grouped_entries(*, data_dir: Path, google_data_dir: Path | None) -> di
     return grouped
 
 
-def _materialize_custom_word_entries(data_dir: Path, labels: list[str]) -> list[dict[str, object]]:
+def _materialize_custom_word_entries(data_dir: Path, labels: list[str], *, langs: list[str] | None) -> list[dict[str, object]]:
     parquet_path = data_dir / "custom_words.parquet"
     materialized_dir = data_dir / "custom-words"
     if materialized_dir.exists():
@@ -92,16 +93,20 @@ def _materialize_custom_word_entries(data_dir: Path, labels: list[str]) -> list[
 
     rows = CustomWordStore(parquet_path).rows()
     label_set = set(labels)
+    lang_set = set(langs) if langs else None
 
     entries: list[dict[str, object]] = []
     for row in rows:
         label = row.get("label")
+        lang = row.get("lang")
         sample_id = row.get("sample_id")
         audio_bytes = row.get("audio_bytes")
         duration_ms = row.get("duration_ms")
         if not isinstance(label, str) or not isinstance(sample_id, str):
             continue
         if label not in label_set:
+            continue
+        if lang_set is not None and lang not in lang_set:
             continue
         if not isinstance(audio_bytes, bytes) or not isinstance(duration_ms, int):
             continue

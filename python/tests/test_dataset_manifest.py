@@ -70,6 +70,51 @@ class DatasetManifestTests(unittest.TestCase):
             self.assertEqual(entries[0]["audio_filepath"], str(materialized.resolve()))
             self.assertFalse((data_dir / "custom-words" / "no").exists())
 
+    def test_build_split_manifests_filters_custom_words_by_langs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            (project_dir / "config.json").write_text(
+                json.dumps({"custom_words": [{"tts_input": "Boston", "label": "boston"}]}) + "\n",
+                encoding="utf-8",
+            )
+            data_dir = project_dir / "data"
+            store = CustomWordStore(data_dir / "custom_words.parquet")
+            store.upsert(
+                build_generated_row(
+                    audio_bytes=_wav_bytes(),
+                    label="boston",
+                    voice_id="voice-en",
+                    voice_code="cr1",
+                    provider="cr",
+                    lang="en",
+                ),
+                overwrite=False,
+            )
+            store.upsert(
+                build_generated_row(
+                    audio_bytes=_wav_bytes(),
+                    label="boston",
+                    voice_id="voice-hi",
+                    voice_code="cr2",
+                    provider="cr",
+                    lang="hi",
+                ),
+                overwrite=False,
+            )
+
+            build_split_manifests(
+                data_dir=data_dir,
+                train_ratio=1,
+                validate_ratio=0,
+                test_ratio=0,
+                langs=["hi"],
+            )
+
+            entries = _read_jsonl(data_dir / "manifests" / "train_manifest.jsonl")
+            self.assertEqual(len(entries), 1)
+            self.assertIn("custom-words/boston", str(entries[0]["audio_filepath"]))
+            self.assertEqual(len(list((data_dir / "custom-words" / "boston").glob("*.wav"))), 1)
+
     def test_build_split_manifests_includes_configured_google_words_except_background_noise(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_dir = Path(tmp_dir)

@@ -142,6 +142,7 @@ class DataTools:
     def manifest(
         self,
         data_dir: str = "data",
+        langs: str | None = None,
         train_ratio: int = 70,
         validate_ratio: int = 20,
         test_ratio: int = 10,
@@ -157,6 +158,7 @@ class DataTools:
             train_ratio=train_ratio,
             validate_ratio=validate_ratio,
             test_ratio=test_ratio,
+            langs=_parse_csv(langs),
             train_filename=train_filename,
             validate_filename=validate_filename,
             test_filename=test_filename,
@@ -409,6 +411,13 @@ def _load_generate_prompts(*, config_path: Path) -> list[GenerationPrompt]:
     return prompts
 
 
+def _parse_csv(value: str | None) -> list[str] | None:
+    if value is None:
+        return None
+    items = [item.strip() for item in value.split(",")]
+    return [item for item in items if item]
+
+
 def _load_generate_voice_selection(*, config_path: Path) -> VoiceSelectionConfig | None:
     if not config_path.exists():
         return None
@@ -512,6 +521,7 @@ def _normalize_cli_flags() -> None:
     flag_aliases = {
         "--all-voices": "--all_voices",
         "--data-dir": "--data_dir",
+        "--langs": "--langs",
         "--downloads-dir": "--downloads_dir",
         "--noises-dir": "--noises_dir",
         "--target-samples-per-word": "--target_samples_per_word",
