@@ -9,6 +9,7 @@ dependencies = [
     "fastapi[standard]>=0.115",
     "fire>=0.7.1",
     "nemo-toolkit[asr]>=2.3.0; sys_platform != 'darwin'",
+    "onnxruntime>=1.23.2",
     "pyarrow>=21.0.0",
     "requests>=2.33.1",
     "silero-vad>=6.2.1",
@@ -27,7 +28,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["wakewords"]
-artifacts = ["wakewords/google_scd_background_noise/*"]
+artifacts = ["wakewords/google_scd_background_noise/*", "wakewords/assets/*"]
 
 [dependency-groups]
 dev = [

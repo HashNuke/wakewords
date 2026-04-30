@@ -15,6 +15,7 @@ from wakewords.augment import DEFAULT_PARQUET_WRITE_BATCH_SIZE, augment_dataset
 from wakewords.check import check_dataset
 from wakewords.clean import clean_dataset
 from wakewords.dataset_manifest import build_split_manifests
+from wakewords.detect import detect_wakeword, detect_wakeword_windows
 from wakewords.download import download_datasets
 from wakewords.export import export_model
 from wakewords.generate import generate_audio
@@ -320,6 +321,41 @@ class DataTools:
             open_browser=open_browser,
         )
 
+    def detect(
+        self,
+        audio_file: str,
+        model_path: str | None = None,
+        labels_path: str | None = None,
+        top_k: int = 5,
+        window_ms: int | None = None,
+        step_ms: int = 200,
+        max_duration_ms: int | None = None,
+        verbose: bool = False,
+    ) -> None:
+        """Detect the most likely wake word in a WAV audio file."""
+        _configure_logging(verbose=verbose)
+        if window_ms is not None:
+            results = detect_wakeword_windows(
+                Path(audio_file),
+                window_ms=window_ms,
+                step_ms=step_ms,
+                max_duration_ms=max_duration_ms,
+                model_path=Path(model_path) if model_path else None,
+                labels_path=Path(labels_path) if labels_path else None,
+                top_k=top_k,
+            )
+            for result in results:
+                print(result.to_json())
+            return
+
+        result = detect_wakeword(
+            Path(audio_file),
+            model_path=Path(model_path) if model_path else None,
+            labels_path=Path(labels_path) if labels_path else None,
+            top_k=top_k,
+        )
+        print(result.to_json())
+
 
 def _load_generate_prompts(*, config_path: Path) -> list[GenerationPrompt]:
     if not config_path.exists():
@@ -475,6 +511,15 @@ def _normalize_cli_flags() -> None:
         "--checkpoint-path": "--checkpoint_path",
         "--output-dir": "--output_dir",
         "--open-browser": "--open_browser",
+        "--audio-file": "--audio_file",
+        "--labels-path": "--labels_path",
+        "--top-k": "--top_k",
+        "--window": "--window_ms",
+        "--window-ms": "--window_ms",
+        "--step": "--step_ms",
+        "--step-ms": "--step_ms",
+        "--max-duration": "--max_duration_ms",
+        "--max-duration-ms": "--max_duration_ms",
     }
     sys.argv = [_normalize_flag(arg, flag_aliases) for arg in sys.argv]
 

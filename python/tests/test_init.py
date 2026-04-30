@@ -17,7 +17,8 @@ class InitProjectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_dir = Path(tmp_dir)
 
-            outputs = init_project(project_dir)
+            with mock.patch("wakewords.project.secrets.randbits", return_value=123456789):
+                outputs = init_project(project_dir)
 
             self.assertEqual(
                 outputs,
@@ -64,14 +65,35 @@ class InitProjectTests(unittest.TestCase):
             config = json.loads(config_text)
             self.assertEqual(config["custom_words"], CUSTOM_WORDS_SAMPLE)
             self.assertEqual(config["google_speech_commands"], GOOGLE_SPEECH_COMMANDS)
-            self.assertEqual(config["augment"], {"parquet_writes_batch_size": 128})
+            self.assertEqual(
+                config["augment"],
+                {
+                    "seed": 123456789,
+                    "parquet_writes_batch_size": 128,
+                    "speech_context": {
+                        "enabled": False,
+                        "target_duration_ms": 1000,
+                        "gap_ms": [10, 100],
+                        "reverse_donor": True,
+                    },
+                },
+            )
             self.assertEqual(
                 config_text,
                 json.dumps(
                     {
                         "custom_words": CUSTOM_WORDS_SAMPLE,
                         "google_speech_commands": GOOGLE_SPEECH_COMMANDS,
-                        "augment": {"parquet_writes_batch_size": 128},
+                        "augment": {
+                            "seed": 123456789,
+                            "parquet_writes_batch_size": 128,
+                            "speech_context": {
+                                "enabled": False,
+                                "target_duration_ms": 1000,
+                                "gap_ms": [10, 100],
+                                "reverse_donor": True,
+                            },
+                        },
                     },
                     indent=2,
                     ensure_ascii=True,

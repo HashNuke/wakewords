@@ -35,6 +35,11 @@ _SCHEMA = pa.schema(
         pa.field("tempo", pa.float64()),
         pa.field("noise_type", pa.string()),
         pa.field("snr", pa.int64()),
+        pa.field("donor_sample_id", pa.string()),
+        pa.field("donor_offset_ms", pa.int64()),
+        pa.field("donor_duration_ms", pa.int64()),
+        pa.field("context_position", pa.string()),
+        pa.field("context_gap_ms", pa.int64()),
         pa.field("created_at", pa.string()),
         pa.field("sha256", pa.string()),
     ]
@@ -65,9 +70,26 @@ class CustomWordStore:
         tempo: float,
         noise_type: str | None,
         snr: int | None,
+        donor_sample_id: str | None = None,
+        donor_offset_ms: int | None = None,
+        donor_duration_ms: int | None = None,
+        context_position: str | None = None,
+        context_gap_ms: int | None = None,
     ) -> dict[str, object] | None:
         with self._lock:
-            sample_id = self._augmented_rows.get((parent_sample_id, tempo, noise_type, snr))
+            sample_id = self._augmented_rows.get(
+                (
+                    parent_sample_id,
+                    tempo,
+                    noise_type,
+                    snr,
+                    donor_sample_id,
+                    donor_offset_ms,
+                    donor_duration_ms,
+                    context_position,
+                    context_gap_ms,
+                )
+            )
             if sample_id is None:
                 return None
             row = self._rows.get(sample_id)
@@ -179,7 +201,24 @@ class CustomWordStore:
         snr = row.get("snr")
         if not isinstance(parent_sample_id, str) or not isinstance(tempo, float):
             return
-        self._augmented_rows[(parent_sample_id, tempo, noise_type if isinstance(noise_type, str) else None, snr if isinstance(snr, int) else None)] = _require_str(row, "sample_id")
+        donor_sample_id = row.get("donor_sample_id")
+        donor_offset_ms = row.get("donor_offset_ms")
+        donor_duration_ms = row.get("donor_duration_ms")
+        context_position = row.get("context_position")
+        context_gap_ms = row.get("context_gap_ms")
+        self._augmented_rows[
+            (
+                parent_sample_id,
+                tempo,
+                noise_type if isinstance(noise_type, str) else None,
+                snr if isinstance(snr, int) else None,
+                donor_sample_id if isinstance(donor_sample_id, str) else None,
+                donor_offset_ms if isinstance(donor_offset_ms, int) else None,
+                donor_duration_ms if isinstance(donor_duration_ms, int) else None,
+                context_position if isinstance(context_position, str) else None,
+                context_gap_ms if isinstance(context_gap_ms, int) else None,
+            )
+        ] = _require_str(row, "sample_id")
 
     def _rebuild_augmented_rows(self) -> None:
         self._augmented_rows = {}
@@ -229,6 +268,11 @@ def build_generated_row(
         "tempo": None,
         "noise_type": None,
         "snr": None,
+        "donor_sample_id": None,
+        "donor_offset_ms": None,
+        "donor_duration_ms": None,
+        "context_position": None,
+        "context_gap_ms": None,
         "created_at": datetime.now(UTC).isoformat(),
         "sha256": sha256,
     }
@@ -241,12 +285,21 @@ def build_augmented_row(
     tempo: float,
     noise_type: str | None,
     snr: int | None,
+    donor_sample_id: str | None = None,
+    donor_offset_ms: int | None = None,
+    donor_duration_ms: int | None = None,
+    context_position: str | None = None,
+    context_gap_ms: int | None = None,
 ) -> dict[str, object]:
     sample_rate, channels, duration_ms = probe_wav_bytes(audio_bytes)
     sha256 = hashlib.sha256(audio_bytes).hexdigest()
     label = _require_str(source_row, "label")
     parent_sample_id = _require_str(source_row, "sample_id")
-    sample_id = hashlib.sha256(f"augmented\0{parent_sample_id}\0{tempo}\0{noise_type}\0{snr}".encode("utf-8")).hexdigest()
+    sample_id = hashlib.sha256(
+        f"augmented\0{parent_sample_id}\0{tempo}\0{noise_type}\0{snr}\0{donor_sample_id}\0{donor_offset_ms}\0{donor_duration_ms}\0{context_position}\0{context_gap_ms}".encode(
+            "utf-8"
+        )
+    ).hexdigest()
     return {
         "sample_id": sample_id,
         "label": label,
@@ -263,6 +316,11 @@ def build_augmented_row(
         "tempo": tempo,
         "noise_type": noise_type,
         "snr": snr,
+        "donor_sample_id": donor_sample_id,
+        "donor_offset_ms": donor_offset_ms,
+        "donor_duration_ms": donor_duration_ms,
+        "context_position": context_position,
+        "context_gap_ms": context_gap_ms,
         "created_at": datetime.now(UTC).isoformat(),
         "sha256": sha256,
     }

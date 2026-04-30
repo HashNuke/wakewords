@@ -1,0 +1,1 @@
+"""Packaged wakewords model assets."""

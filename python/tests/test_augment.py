@@ -10,14 +10,20 @@ from unittest import mock
 
 from wakewords.augment import (
     AugmentTask,
+    ContextPlan,
+    ContextSlot,
     DEFAULT_PARQUET_WRITE_BATCH_SIZE,
+    DonorSample,
     NoiseSample,
     SourceSample,
     _build_tasks,
     _collect_noises,
     _collect_sources,
+    _compose_context_audio,
+    _compose_context_audio_ffmpeg,
     _combo_shape,
     _mix_to_snr,
+    _read_wav_samples,
     _select_subset,
     augment_dataset,
 )
@@ -145,6 +151,88 @@ class AugmentTests(unittest.TestCase):
             self.assertEqual(augmented["tempo"], 1.0)
             self.assertEqual(augmented["noise_type"], "rain")
             self.assertEqual(augmented["snr"], 10)
+
+    def test_augment_dataset_adds_reversed_donor_context_from_other_original_label(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            (project_dir / "config.json").write_text(
+                json.dumps(
+                    {
+                        "custom_words": [{"tts_input": "Yes", "label": "yes"}],
+                        "augment": {
+                            "seed": 42,
+                            "speech_context": {
+                                "enabled": True,
+                                "target_duration_ms": 1000,
+                                "gap_ms": [10, 100],
+                                "reverse_donor": True,
+                            },
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            data_dir = project_dir / "data"
+            noises_dir = project_dir / "background_audio"
+            noises_dir.mkdir()
+            (noises_dir / "rain.wav").write_bytes(b"not read because manifest exists")
+            (noises_dir / "manifest.jsonl").write_text(
+                json.dumps({"audio": "rain.wav", "duration_ms": 2000}) + "\n",
+                encoding="utf-8",
+            )
+            store = CustomWordStore(data_dir / "custom_words.parquet")
+            source = build_generated_row(
+                audio_bytes=_wav_bytes(duration_ms=250),
+                label="yes",
+                voice_id="voice-1",
+                voice_code="cr1",
+                provider="cr",
+                lang="en",
+            )
+            donor = build_generated_row(
+                audio_bytes=_wav_bytes(duration_ms=1000),
+                label="no",
+                voice_id="voice-2",
+                voice_code="cr2",
+                provider="cr",
+                lang="en",
+            )
+            donor_2 = build_generated_row(
+                audio_bytes=_wav_bytes(duration_ms=1000),
+                label="up",
+                voice_id="voice-3",
+                voice_code="cr3",
+                provider="cr",
+                lang="en",
+            )
+            store.upsert_many([source, donor, donor_2], overwrite=False)
+
+            with (
+                mock.patch("wakewords.augment._speech_segment_ms", return_value=(0, 1000)),
+                mock.patch("wakewords.augment._tempo_adjust", side_effect=_copy_to_temp_wav),
+                mock.patch("wakewords.augment._extract_noise_segment", side_effect=lambda **_: _temp_wav(_wav_bytes(duration_ms=1000))),
+                mock.patch("wakewords.augment._mix_to_snr", side_effect=lambda **kwargs: kwargs["output_path"].write_bytes(kwargs["speech_path"].read_bytes())),
+            ):
+                augment_dataset(
+                    data_dir=data_dir,
+                    noises_dir=noises_dir,
+                    concurrency=1,
+                    overwrite=False,
+                    tempos=(1.0,),
+                    snrs=(10,),
+                    target_samples_per_word=2,
+                )
+
+            rows = CustomWordStore(data_dir / "custom_words.parquet").rows()
+            augmented = next(row for row in rows if row["source_type"] == "augmented")
+            self.assertEqual(augmented["label"], "yes")
+            self.assertIn(augmented["donor_sample_id"], {donor["sample_id"], donor_2["sample_id"]})
+            self.assertIn(augmented["context_position"], {"prepend", "append", "both"})
+            self.assertIsInstance(augmented["donor_offset_ms"], int)
+            self.assertGreaterEqual(augmented["context_gap_ms"], 10)
+            self.assertLessEqual(augmented["context_gap_ms"], 200)
+            self.assertEqual(augmented["duration_ms"], 1000)
 
     def test_augment_dataset_reports_lfs_background_audio(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -334,6 +422,39 @@ class AugmentTests(unittest.TestCase):
         self.assertIn("apad,atrim=end_sample=4[scaled]", filter_complex)
         self.assertIn("amix=inputs=2:normalize=0:duration=first", filter_complex)
 
+    def test_ffmpeg_context_composition_matches_python_reference(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            speech_path = tmp_path / "speech.wav"
+            python_output = tmp_path / "python.wav"
+            ffmpeg_output = tmp_path / "ffmpeg.wav"
+            speech_path.write_bytes(_wav_bytes_from_samples([1000, 2000, 3000, 4000]))
+            before = DonorSample(
+                sample_id="before",
+                word="no",
+                audio_bytes=_wav_bytes_from_samples(list(range(200))),
+                speech_start_ms=0,
+                speech_end_ms=6,
+            )
+            after = DonorSample(
+                sample_id="after",
+                word="up",
+                audio_bytes=_wav_bytes_from_samples(list(range(200, 400))),
+                speech_start_ms=0,
+                speech_end_ms=6,
+            )
+            cases = [
+                ContextPlan("prepend", ContextSlot(before, 1, 3), None, 2, 0, True),
+                ContextPlan("append", None, ContextSlot(after, 2, 3), 0, 2, True),
+                ContextPlan("both", ContextSlot(before, 1, 3), ContextSlot(after, 2, 3), 2, 2, True),
+            ]
+
+            for index, plan in enumerate(cases):
+                with self.subTest(index=index, position=plan.position):
+                    _compose_context_audio(speech_path=speech_path, context_plan=plan, output_path=python_output)
+                    _compose_context_audio_ffmpeg(speech_path=speech_path, context_plan=plan, output_path=ffmpeg_output)
+                    self.assertEqual(_read_wav_samples(ffmpeg_output), _read_wav_samples(python_output))
+
 
 def _wav_bytes(*, duration_ms: int = 250) -> bytes:
     sample_rate = 16000
@@ -344,6 +465,16 @@ def _wav_bytes(*, duration_ms: int = 250) -> bytes:
             wav_file.setsampwidth(2)
             wav_file.setframerate(sample_rate)
             wav_file.writeframes(b"\x00\x00" * frame_count)
+        return buffer.getvalue()
+
+
+def _wav_bytes_from_samples(samples: list[int], *, sample_rate: int = 16000) -> bytes:
+    with io.BytesIO() as buffer:
+        with wave.open(buffer, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(b"".join(sample.to_bytes(2, "little", signed=True) for sample in samples))
         return buffer.getvalue()
 
 
@@ -369,3 +500,5 @@ def _lfs_pointer_bytes(*, size: int) -> bytes:
 
 if __name__ == "__main__":
     unittest.main()
+    _compose_context_audio,
+    _compose_context_audio_ffmpeg,

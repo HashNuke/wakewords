@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import json
+import secrets
 import shutil
 from importlib import resources
 from pathlib import Path
 
-from wakewords.augment import DEFAULT_PARQUET_WRITE_BATCH_SIZE
+from wakewords.augment import (
+    DEFAULT_CONTEXT_MAX_GAP_MS,
+    DEFAULT_CONTEXT_MIN_GAP_MS,
+    DEFAULT_CONTEXT_TARGET_DURATION_MS,
+    DEFAULT_PARQUET_WRITE_BATCH_SIZE,
+)
 
 
 GOOGLE_SPEECH_COMMANDS = [
@@ -77,7 +83,14 @@ def init_project(project_dir: Path) -> list[Path]:
         "custom_words": CUSTOM_WORDS_SAMPLE,
         "google_speech_commands": GOOGLE_SPEECH_COMMANDS,
         "augment": {
+            "seed": secrets.randbits(32),
             "parquet_writes_batch_size": DEFAULT_PARQUET_WRITE_BATCH_SIZE,
+            "speech_context": {
+                "enabled": False,
+                "target_duration_ms": DEFAULT_CONTEXT_TARGET_DURATION_MS,
+                "gap_ms": [DEFAULT_CONTEXT_MIN_GAP_MS, DEFAULT_CONTEXT_MAX_GAP_MS],
+                "reverse_donor": True,
+            },
         },
     }
     config_path.write_text(
