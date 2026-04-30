@@ -241,6 +241,15 @@ class ExportTests(unittest.TestCase):
             self.assertEqual(serve_playground.call_args.kwargs["port"], 9000)
             self.assertFalse(serve_playground.call_args.kwargs["open_browser"])
 
+    def test_cli_serve_defaults_to_port_4491(self) -> None:
+        argv = ["wakewords", "serve"]
+
+        with mock.patch.object(cli.sys, "argv", argv):
+            with mock.patch("wakewords.server.serve_playground") as serve_playground:
+                cli.main()
+
+        self.assertEqual(serve_playground.call_args.kwargs["port"], 4491)
+
 
 def _create_run(project_dir: Path, run_name: str) -> Path:
     run_dir = project_dir / "runs" / run_name

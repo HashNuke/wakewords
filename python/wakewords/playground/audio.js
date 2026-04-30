@@ -56,8 +56,38 @@ export async function loadLabelMetadata() {
 
 export async function inferWav(wavBlob) {
   const [{ session, labels }, samples] = await Promise.all([loadModel(), decodeWav(wavBlob)]);
+  return predictSamples(session, labels, samples);
+}
+
+export async function inferWavWindows(wavBlob, { windowMs = 1000, stepMs = 100 } = {}) {
+  if (windowMs < 1) throw new Error("windowMs must be at least 1");
+  if (stepMs < 1) throw new Error("stepMs must be at least 1");
+  const [{ session, labels }, samples] = await Promise.all([loadModel(), decodeWav(wavBlob)]);
+  const windowSamples = Math.max(1, Math.round((MODEL_SAMPLE_RATE * windowMs) / 1000));
+  const stepSamples = Math.max(1, Math.round((MODEL_SAMPLE_RATE * stepMs) / 1000));
+  const totalSamples = Math.max(1, samples.length);
+  const results = [];
+
+  for (let start = 0; start < totalSamples; start += stepSamples) {
+    const windowSamplesBuffer = new Float32Array(windowSamples);
+    windowSamplesBuffer.set(samples.slice(start, Math.min(start + windowSamples, samples.length)));
+    const result = await predictSamples(session, labels, windowSamplesBuffer);
+    results.push({
+      ...result,
+      startMs: Math.round((start / MODEL_SAMPLE_RATE) * 1000),
+      endMs: Math.round(((start + windowSamples) / MODEL_SAMPLE_RATE) * 1000),
+    });
+  }
+
+  return results;
+}
+
+function predictSamples(session, labels, samples) {
   const feeds = buildFeeds(session, samples);
-  const outputs = await session.run(feeds);
+  return session.run(feeds).then((outputs) => predictionFromOutputs(session, labels, outputs));
+}
+
+function predictionFromOutputs(session, labels, outputs) {
   const output = outputs[session.outputNames[0]];
   const probabilities = normalizeProbabilities(Array.from(output.data));
   const resultLabels =

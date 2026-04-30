@@ -1,4 +1,7 @@
-import { createRecorder, enableMic, inferWav, loadLabelMetadata } from "./audio.js";
+import { createRecorder, enableMic, inferWavWindows, loadLabelMetadata } from "./audio.js";
+
+const INFERENCE_WINDOW_MS = 1000;
+const INFERENCE_STEP_MS = 100;
 
 const enableButton = document.querySelector("#enableMic");
 const labelSelect = document.querySelector("#labelSelect");
@@ -50,10 +53,11 @@ window.addEventListener("keyup", async (event) => {
   statusEl.textContent = "running inference";
   const wav = recorder.stop();
   try {
-    const result = await inferWav(wav);
+    const results = await inferWavWindows(wav, { windowMs: INFERENCE_WINDOW_MS, stepMs: INFERENCE_STEP_MS });
+    const result = strongestPrediction(results);
     readoutEl.textContent = result.label;
-    probabilityEl.textContent = `${Math.round(result.probability * 100)}%`;
-    statusEl.textContent = "ready";
+    probabilityEl.textContent = `${Math.round(result.probability * 100)}% (${result.startMs}-${result.endMs}ms)`;
+    statusEl.textContent = `ready (${results.length} windows)`;
     saveDiagnostic(wav, labelSelect.value, result.label);
   } catch (error) {
     readoutEl.textContent = "error";
@@ -61,6 +65,13 @@ window.addEventListener("keyup", async (event) => {
     statusEl.textContent = "ready";
   }
 });
+
+function strongestPrediction(results) {
+  if (results.length === 0) {
+    throw new Error("no inference windows produced");
+  }
+  return results.reduce((best, result) => (result.probability > best.probability ? result : best));
+}
 
 async function saveDiagnostic(wav, truthLabel, prediction) {
   const form = new FormData();

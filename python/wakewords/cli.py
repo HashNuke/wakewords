@@ -337,7 +337,7 @@ class DataTools:
         runs_dir: str = "runs",
         output_dir: str = "models",
         host: str = "127.0.0.1",
-        port: int = 8000,
+        port: int = 4491,
         open_browser: bool = True,
         verbose: bool = False,
     ) -> None:
