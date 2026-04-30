@@ -142,7 +142,7 @@ class DataTools:
     def manifest(
         self,
         data_dir: str = "data",
-        langs: str | None = None,
+        langs: object = None,
         train_ratio: int = 70,
         validate_ratio: int = 20,
         test_ratio: int = 10,
@@ -411,10 +411,11 @@ def _load_generate_prompts(*, config_path: Path) -> list[GenerationPrompt]:
     return prompts
 
 
-def _parse_csv(value: str | None) -> list[str] | None:
+def _parse_csv(value: object) -> list[str] | None:
     if value is None:
         return None
-    items = [item.strip() for item in value.split(",")]
+    values = value if isinstance(value, tuple | list) else (value,)
+    items = [item.strip() for raw_value in values for item in str(raw_value).split(",")]
     return [item for item in items if item]
 
 
