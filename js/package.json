@@ -1,6 +1,6 @@
 {
   "name": "wakewords",
-  "version": "0.3.14",
+  "version": "0.3.15",
   "description": "Detect wakewords in browsers and Node.js",
   "type": "module",
   "main": "./src/index-node.js",
