@@ -6,6 +6,7 @@ import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 
 SUPPORTED_FORMATS = {"onnx"}
@@ -99,26 +100,36 @@ def export_model(
         shutil.copyfile(source.checkpoint_path, destination_checkpoint)
 
     if destination_train_config is not None:
-        shutil.copyfile(source.train_config_path, destination_train_config)
+        _write_portable_train_config(source.train_config_path, destination_train_config)
 
     if labels_path is not None:
         labels_path.write_text(json.dumps(labels, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
 
     export_config = {
         "format": export_format,
-        "model_path": str(destination_model),
-        "checkpoint_dir": str(checkpoint_dir) if checkpoint_dir is not None else None,
-        "checkpoint_path": str(destination_checkpoint) if destination_checkpoint is not None else None,
-        "train_config_path": str(destination_train_config) if destination_train_config is not None else None,
-        "labels_path": str(labels_path) if labels_path is not None else None,
-        "source": {
-            "run_dir": str(source.run_dir) if source.run_dir is not None else None,
-            "model_path": str(source.model_path),
-            "checkpoint_path": str(source.checkpoint_path) if source.checkpoint_path is not None else None,
-            "train_config_path": str(source.train_config_path) if source.train_config_path is not None else None,
-        },
+        "model_path": _export_relative_path(destination_model, output_dir),
+        "checkpoint_dir": _export_relative_path(checkpoint_dir, output_dir)
+        if checkpoint_dir is not None
+        else None,
+        "checkpoint_path": _export_relative_path(destination_checkpoint, output_dir)
+        if destination_checkpoint is not None
+        else None,
+        "train_config_path": _export_relative_path(destination_train_config, output_dir)
+        if destination_train_config is not None
+        else None,
+        "labels_path": _export_relative_path(labels_path, output_dir) if labels_path is not None else None,
     }
     config_path.write_text(json.dumps(export_config, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+
+    _validate_export_privacy(
+        paths=[
+            path
+            for path in (destination_model, destination_checkpoint, destination_train_config, labels_path, config_path)
+            if path
+        ],
+        source=source,
+        project_dir=project_dir,
+    )
 
     return ExportBundle(
         output_dir=output_dir,
@@ -210,6 +221,63 @@ def _load_labels(train_config_path: Path | None) -> list[str] | None:
     if not isinstance(labels, list) or not all(isinstance(label, str) for label in labels):
         return None
     return sorted(labels)
+
+
+def _write_portable_train_config(source_path: Path, destination_path: Path) -> None:
+    source_config = json.loads(source_path.read_text(encoding="utf-8"))
+    portable_config: dict[str, Any] = {}
+    model_name = source_config.get("model_name")
+    if isinstance(model_name, str):
+        portable_config["model_name"] = model_name
+    labels = source_config.get("labels")
+    if isinstance(labels, list) and all(isinstance(label, str) for label in labels):
+        portable_config["labels"] = labels
+    training = source_config.get("training")
+    if isinstance(training, dict):
+        portable_training_keys = {
+            "max_epochs",
+            "batch_size",
+            "num_workers",
+            "accelerator",
+            "devices",
+            "learning_rate",
+            "tensorboard",
+        }
+        portable_config["training"] = {
+            key: value for key, value in training.items() if key in portable_training_keys
+        }
+    destination_path.write_text(json.dumps(portable_config, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+
+
+def _export_relative_path(path: Path, output_dir: Path) -> str:
+    return path.relative_to(output_dir).as_posix()
+
+
+def _validate_export_privacy(*, paths: list[Path], source: _ExportSource, project_dir: Path) -> None:
+    forbidden = _forbidden_path_strings(project_dir=project_dir, source=source)
+    leaked: list[str] = []
+    for path in paths:
+        data = path.read_bytes()
+        for value in forbidden:
+            if value.encode() in data:
+                leaked.append(f"{path.name}: {value}")
+    if leaked:
+        details = "; ".join(leaked)
+        raise ValueError(f"Export contains local path information: {details}")
+
+
+def _forbidden_path_strings(*, project_dir: Path, source: _ExportSource) -> set[str]:
+    paths = {project_dir, source.model_path}
+    if source.run_dir is not None:
+        paths.add(source.run_dir)
+    if source.checkpoint_path is not None:
+        paths.add(source.checkpoint_path)
+    if source.train_config_path is not None:
+        paths.add(source.train_config_path)
+    home = Path.home()
+    if home != Path("/"):
+        paths.add(home)
+    return {str(path.resolve()) for path in paths if str(path.resolve()) != "/"}
 
 
 def _export_onnx(source_model_path: Path, destination_model_path: Path) -> None:

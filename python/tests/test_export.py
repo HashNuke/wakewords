@@ -41,17 +41,35 @@ class ExportTests(unittest.TestCase):
             self.assertEqual(bundle.config_path, output_dir / "export_config.json")
             self.assertEqual((output_dir / "model.onnx").read_text(encoding="utf-8"), "onnx")
             self.assertEqual((output_dir / "last_checkpoint" / "last.ckpt").read_text(encoding="utf-8"), "checkpoint")
-            self.assertEqual(json.loads((output_dir / "last_checkpoint" / "train_config.json").read_text(encoding="utf-8")), {"labels": ["yes", "unknown"]})
+            train_config = json.loads((output_dir / "last_checkpoint" / "train_config.json").read_text(encoding="utf-8"))
+            self.assertEqual(
+                train_config,
+                {
+                    "model_name": DEFAULT_MODEL_NAME,
+                    "labels": ["yes", "unknown"],
+                    "training": {
+                        "max_epochs": 3,
+                        "batch_size": 16,
+                        "num_workers": 2,
+                        "accelerator": "cpu",
+                        "devices": 1,
+                        "learning_rate": 0.001,
+                        "tensorboard": False,
+                    },
+                },
+            )
             self.assertEqual(json.loads((output_dir / "labels.json").read_text(encoding="utf-8")), ["unknown", "yes"])
 
             export_config = json.loads((output_dir / "export_config.json").read_text(encoding="utf-8"))
             self.assertEqual(export_config["format"], "onnx")
-            self.assertEqual(export_config["model_path"], str(output_dir / "model.onnx"))
-            self.assertEqual(export_config["checkpoint_dir"], str(output_dir / "last_checkpoint"))
-            self.assertEqual(export_config["checkpoint_path"], str(output_dir / "last_checkpoint" / "last.ckpt"))
-            self.assertEqual(export_config["train_config_path"], str(output_dir / "last_checkpoint" / "train_config.json"))
-            self.assertEqual(export_config["labels_path"], str(output_dir / "labels.json"))
-            self.assertEqual(export_config["source"]["run_dir"], str(run_dir))
+            self.assertEqual(export_config["model_path"], "model.onnx")
+            self.assertEqual(export_config["checkpoint_dir"], "last_checkpoint")
+            self.assertEqual(export_config["checkpoint_path"], "last_checkpoint/last.ckpt")
+            self.assertEqual(export_config["train_config_path"], "last_checkpoint/train_config.json")
+            self.assertEqual(export_config["labels_path"], "labels.json")
+            self.assertNotIn("source", export_config)
+            self.assertNotIn(str(project_dir), json.dumps(export_config))
+            self.assertNotIn(str(project_dir), json.dumps(train_config))
 
     def test_export_model_refuses_to_overwrite_without_flag(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -134,8 +152,39 @@ class ExportTests(unittest.TestCase):
             self.assertEqual((checkpoint_dir / "last.ckpt").read_text(encoding="utf-8"), "checkpoint")
             self.assertEqual(
                 json.loads((checkpoint_dir / "train_config.json").read_text(encoding="utf-8")),
-                {"labels": ["yes", "unknown"]},
+                {
+                    "model_name": DEFAULT_MODEL_NAME,
+                    "labels": ["yes", "unknown"],
+                    "training": {
+                        "max_epochs": 3,
+                        "batch_size": 16,
+                        "num_workers": 2,
+                        "accelerator": "cpu",
+                        "devices": 1,
+                        "learning_rate": 0.001,
+                        "tensorboard": False,
+                    },
+                },
             )
+
+    def test_export_model_rejects_checkpoint_with_local_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir).resolve()
+            run_dir = _create_run(project_dir, "leaky-run")
+            (run_dir / "checkpoints" / "last.ckpt").write_text(f"checkpoint from {project_dir}\n", encoding="utf-8")
+
+            with mock.patch("wakewords.export._export_onnx", side_effect=_fake_export_onnx):
+                with self.assertRaisesRegex(ValueError, "local path information"):
+                    export_model(
+                        project_dir=project_dir,
+                        runs_dir=Path("runs"),
+                        run_dir=None,
+                        model_path=None,
+                        checkpoint_path=None,
+                        output_dir=Path("models"),
+                        format="onnx",
+                        overwrite=False,
+                    )
 
     def test_cli_serve_starts_playground(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -173,7 +222,35 @@ def _create_run(project_dir: Path, run_name: str) -> Path:
     (models_dir / f"{DEFAULT_MODEL_NAME}.nemo").write_text("nemo", encoding="utf-8")
     (checkpoints_dir / "last.ckpt").write_text("checkpoint", encoding="utf-8")
     (run_dir / "train_config.json").write_text(
-        json.dumps({"labels": ["yes", "unknown"]}) + "\n",
+        json.dumps(
+            {
+                "model_name": DEFAULT_MODEL_NAME,
+                "base_model_path": str(project_dir / "local" / "base.nemo"),
+                "from_checkpoint": str(checkpoints_dir / "last.ckpt"),
+                "resume_source": {"checkpoint_path": str(project_dir / "other" / "last.ckpt")},
+                "labels": ["yes", "unknown"],
+                "manifests": {
+                    "train": str(project_dir / "data" / "manifests" / "train.jsonl"),
+                    "validation": str(project_dir / "data" / "manifests" / "validation.jsonl"),
+                    "test": str(project_dir / "data" / "manifests" / "test.jsonl"),
+                },
+                "training": {
+                    "max_epochs": 3,
+                    "batch_size": 16,
+                    "num_workers": 2,
+                    "accelerator": "cpu",
+                    "devices": 1,
+                    "learning_rate": 0.001,
+                    "tensorboard": False,
+                },
+                "outputs": {
+                    "run_dir": str(run_dir),
+                    "checkpoints_dir": str(checkpoints_dir),
+                    "models_dir": str(models_dir),
+                },
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
     return run_dir
