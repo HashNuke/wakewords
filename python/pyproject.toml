@@ -3,7 +3,7 @@ name = "wakewords"
 version = "0.3.20"
 description = "Tools for building wake-word and speech-command datasets and models."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.13,<3.14"
 dependencies = [
     "cartesia>=3.0.2",
     "fastapi[standard]>=0.115",
