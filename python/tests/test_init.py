@@ -127,9 +127,9 @@ class InitProjectTests(unittest.TestCase):
             output_dir = tmp_path / "background_audio"
             output_dir.mkdir()
             with zipfile.ZipFile(archive_path, "w") as archive:
-                archive.writestr("background-noise-r1/manifest.jsonl", "{}\n")
-                archive.writestr("background-noise-r1/noise.wav", b"wav")
-                archive.writestr("background-noise-r1/README.md", "credits\n")
+                archive.writestr("background_audio/manifest.jsonl", "{}\n")
+                archive.writestr("background_audio/noise.wav", b"wav")
+                archive.writestr("background_audio/README.md", "credits\n")
 
             _extract_background_audio_archive(archive_path, output_dir)
 
@@ -141,7 +141,7 @@ class InitProjectTests(unittest.TestCase):
     def test_background_audio_url_points_to_release_asset(self) -> None:
         self.assertEqual(
             BACKGROUND_AUDIO_URL,
-            "https://github.com/HashNuke/wakewords/releases/download/background-audio-r1/background-noise-r1.zip",
+            "https://github.com/HashNuke/wakewords/releases/download/background-audio-r2/background_audio.zip",
         )
 
     def test_cli_init_prints_created_paths(self) -> None:

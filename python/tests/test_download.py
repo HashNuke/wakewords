@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,7 +11,7 @@ from wakewords.download import download_datasets
 
 
 class DownloadTests(unittest.TestCase):
-    def test_download_datasets_downloads_google_data(self) -> None:
+    def test_download_datasets_downloads_google_data_when_config_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_dir = Path(tmp_dir)
             downloads_dir = project_dir / "downloads"
@@ -40,7 +41,7 @@ class DownloadTests(unittest.TestCase):
                     ),
                     mock.call(
                         BACKGROUND_AUDIO_URL,
-                        downloads_dir / "background-noise-r1.zip",
+                        downloads_dir / "background_audio.zip",
                         description="Background Audio",
                     ),
                 ],
@@ -51,7 +52,64 @@ class DownloadTests(unittest.TestCase):
                 description="Extract Google Speech Commands",
             )
             extract_zip.assert_called_once_with(
-                downloads_dir / "background-noise-r1.zip",
+                downloads_dir / "background_audio.zip",
+                project_dir / "background_audio",
+            )
+
+    def test_download_datasets_downloads_google_data_when_config_requests_google_words(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            downloads_dir = project_dir / "downloads"
+            (project_dir / "config.json").write_text(
+                json.dumps({"google_speech_commands": ["yes"]}) + "\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch("wakewords.download._download_file") as download_file:
+                with mock.patch("wakewords.download._extract_tar") as extract_tar:
+                    with mock.patch("wakewords.download._extract_zip") as extract_zip:
+                        outputs = download_datasets(
+                            downloads_dir=downloads_dir,
+                            data_dir=project_dir,
+                        )
+
+            self.assertEqual(
+                outputs,
+                [
+                    project_dir / "google-speech-commands",
+                    project_dir / "background_audio",
+                ],
+            )
+            self.assertEqual(download_file.call_count, 2)
+            extract_tar.assert_called_once()
+            extract_zip.assert_called_once()
+
+    def test_download_datasets_skips_google_data_when_config_has_no_google_words(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            downloads_dir = project_dir / "downloads"
+            (project_dir / "config.json").write_text(
+                json.dumps({"google_speech_commands": []}) + "\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch("wakewords.download._download_file") as download_file:
+                with mock.patch("wakewords.download._extract_tar") as extract_tar:
+                    with mock.patch("wakewords.download._extract_zip") as extract_zip:
+                        outputs = download_datasets(
+                            downloads_dir=downloads_dir,
+                            data_dir=project_dir,
+                        )
+
+            self.assertEqual(outputs, [project_dir / "background_audio"])
+            download_file.assert_called_once_with(
+                BACKGROUND_AUDIO_URL,
+                downloads_dir / "background_audio.zip",
+                description="Background Audio",
+            )
+            extract_tar.assert_not_called()
+            extract_zip.assert_called_once_with(
+                downloads_dir / "background_audio.zip",
                 project_dir / "background_audio",
             )
 

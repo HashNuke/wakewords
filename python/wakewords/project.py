@@ -62,7 +62,7 @@ CUSTOM_WORDS_SAMPLE = [
 
 BACKGROUND_AUDIO_URL = (
     "https://github.com/HashNuke/wakewords/releases/download/"
-    "background-audio-r1/background-noise-r1.zip"
+    "background-audio-r2/background_audio.zip"
 )
 
 

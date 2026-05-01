@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import tarfile
 import tempfile
@@ -13,7 +14,7 @@ from wakewords.project import BACKGROUND_AUDIO_URL, _extract_background_audio_ar
 GOOGLE_SPEECH_COMMANDS_URL = "http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz"
 GOOGLE_SPEECH_COMMANDS_ARCHIVE = "speech_commands_v0.02.tar.gz"
 GOOGLE_SPEECH_COMMANDS_DIR = "google-speech-commands"
-BACKGROUND_AUDIO_ARCHIVE = "background-noise-r1.zip"
+BACKGROUND_AUDIO_ARCHIVE = "background_audio.zip"
 BACKGROUND_AUDIO_DIR = "background_audio"
 
 
@@ -52,11 +53,12 @@ def _download_selected(
 ) -> list[Path]:
     outputs: list[Path] = []
 
-    archive_path = downloads_dir / GOOGLE_SPEECH_COMMANDS_ARCHIVE
-    _download_file(GOOGLE_SPEECH_COMMANDS_URL, archive_path, description="Google Speech Commands")
-    dataset_dir = data_dir / GOOGLE_SPEECH_COMMANDS_DIR
-    _extract_tar(archive_path, dataset_dir, description="Extract Google Speech Commands")
-    outputs.append(dataset_dir)
+    if _should_download_google_speech_commands(data_dir / "config.json"):
+        archive_path = downloads_dir / GOOGLE_SPEECH_COMMANDS_ARCHIVE
+        _download_file(GOOGLE_SPEECH_COMMANDS_URL, archive_path, description="Google Speech Commands")
+        dataset_dir = data_dir / GOOGLE_SPEECH_COMMANDS_DIR
+        _extract_tar(archive_path, dataset_dir, description="Extract Google Speech Commands")
+        outputs.append(dataset_dir)
 
     background_archive_path = downloads_dir / BACKGROUND_AUDIO_ARCHIVE
     _download_file(BACKGROUND_AUDIO_URL, background_archive_path, description="Background Audio")
@@ -65,6 +67,17 @@ def _download_selected(
     outputs.append(background_audio_dir)
 
     return outputs
+
+
+def _should_download_google_speech_commands(config_path: Path) -> bool:
+    if not config_path.exists():
+        return True
+
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    google_speech_commands = config.get("google_speech_commands")
+    if isinstance(google_speech_commands, list):
+        return bool(google_speech_commands)
+    return True
 
 
 def _download_file(url: str, output_path: Path, *, description: str) -> None:
