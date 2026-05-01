@@ -6,6 +6,7 @@ import tempfile
 import unittest
 import wave
 from pathlib import Path
+from unittest import mock
 
 from wakewords.parquet_store import CustomWordStore, build_augmented_row, build_generated_row, probe_wav_bytes
 
@@ -18,7 +19,6 @@ class CustomWordStoreTests(unittest.TestCase):
                 audio_bytes=_wav_bytes(),
                 label="dexa",
                 voice_id="voice-123",
-                voice_code="cr1",
                 provider="cr",
                 lang="en",
             )
@@ -41,7 +41,6 @@ class CustomWordStoreTests(unittest.TestCase):
                 audio_bytes=_wav_bytes(),
                 label="dexa",
                 voice_id="voice-123",
-                voice_code="cr1",
                 provider="cr",
                 lang="en",
             )
@@ -49,7 +48,6 @@ class CustomWordStoreTests(unittest.TestCase):
                 audio_bytes=_wav_bytes(duration_ms=500),
                 label="dexa",
                 voice_id="voice-123",
-                voice_code="cr1",
                 provider="cr",
                 lang="en",
             )
@@ -61,24 +59,6 @@ class CustomWordStoreTests(unittest.TestCase):
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["duration_ms"], 250)
 
-    def test_voice_code_reuses_existing_provider_sequence(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            store = CustomWordStore(Path(tmp_dir) / "custom_words.parquet")
-            store.upsert(
-                build_generated_row(
-                    audio_bytes=_wav_bytes(),
-                    label="dexa",
-                    voice_id="voice-123",
-                    voice_code="cr1",
-                    provider="cr",
-                    lang="en",
-                ),
-                overwrite=False,
-            )
-
-            self.assertEqual(store.voice_code(provider="cr", voice_id="voice-123"), "cr1")
-            self.assertEqual(store.voice_code(provider="cr", voice_id="voice-456"), "cr2")
-
     def test_upsert_many_writes_once_for_multiple_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             store = CustomWordStore(Path(tmp_dir) / "custom_words.parquet")
@@ -87,7 +67,6 @@ class CustomWordStoreTests(unittest.TestCase):
                     audio_bytes=_wav_bytes(),
                     label="dexa",
                     voice_id="voice-123",
-                    voice_code="cr1",
                     provider="cr",
                     lang="en",
                 ),
@@ -95,13 +74,12 @@ class CustomWordStoreTests(unittest.TestCase):
                     audio_bytes=_wav_bytes(duration_ms=500),
                     label="alexa",
                     voice_id="voice-456",
-                    voice_code="cr2",
                     provider="cr",
                     lang="en",
                 ),
             ]
 
-            with unittest.mock.patch.object(store, "_write", wraps=store._write) as write_mock:
+            with mock.patch.object(store, "_write", wraps=store._write) as write_mock:
                 changed = store.upsert_many(rows, overwrite=False)
 
             self.assertEqual(changed, 2)
@@ -115,7 +93,6 @@ class CustomWordStoreTests(unittest.TestCase):
                 audio_bytes=_wav_bytes(),
                 label="dexa",
                 voice_id="voice-123",
-                voice_code="cr1",
                 provider="cr",
                 lang="en",
             )
@@ -148,7 +125,6 @@ class CustomWordStoreTests(unittest.TestCase):
                 audio_bytes=_wav_bytes(),
                 label="dexa",
                 voice_id="voice-123",
-                voice_code="cr1",
                 provider="cr",
                 lang="en",
             )

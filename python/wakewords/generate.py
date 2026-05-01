@@ -35,11 +35,7 @@ def generate_audio(
     )
     provider_code = _provider_code(provider)
     store = CustomWordStore(parquet_path)
-    voice_codes = {
-        selected_voice.id: store.voice_code(provider=provider_code, voice_id=selected_voice.id)
-        for selected_voice in selected_voices
-    }
-    tasks = build_tasks(prompts=prompts, voices=selected_voices, voice_codes=voice_codes, provider=provider_code)
+    tasks = build_tasks(prompts=prompts, voices=selected_voices, provider=provider_code)
 
     wrote_rows = False
 
@@ -110,11 +106,10 @@ def select_voices(
     return selected_voices[: voices or 1]
 
 
-def build_tasks(*, prompts: list[GenerationPrompt], voices: list[Voice], voice_codes: dict[str, str], provider: str) -> list["GenerationTask"]:
+def build_tasks(*, prompts: list[GenerationPrompt], voices: list[Voice], provider: str) -> list["GenerationTask"]:
     tasks: list[GenerationTask] = []
     seen: set[str] = set()
     for selected_voice in voices:
-        voice_code = voice_codes[selected_voice.id]
         for prompt in prompts:
             word_slug = prompt.label
             sample_id = _generated_sample_id(label=word_slug, provider=provider, voice_id=selected_voice.id)
@@ -125,7 +120,6 @@ def build_tasks(*, prompts: list[GenerationPrompt], voices: list[Voice], voice_c
                 GenerationTask(
                     prompt=prompt.tts_input,
                     voice=selected_voice,
-                    voice_code=voice_code,
                     word_slug=word_slug,
                     sample_id=sample_id,
                 )
@@ -134,10 +128,9 @@ def build_tasks(*, prompts: list[GenerationPrompt], voices: list[Voice], voice_c
 
 
 class GenerationTask:
-    def __init__(self, *, prompt: str, voice: Voice, voice_code: str, word_slug: str, sample_id: str) -> None:
+    def __init__(self, *, prompt: str, voice: Voice, word_slug: str, sample_id: str) -> None:
         self.prompt = prompt
         self.voice = voice
-        self.voice_code = voice_code
         self.word_slug = word_slug
         self.sample_id = sample_id
 
@@ -219,7 +212,6 @@ def _generate_one(
             label=task.word_slug,
             provider=provider_code,
             voice_id=task.voice.id,
-            voice_code=task.voice_code,
             sample_id=task.sample_id,
         ),
     )
@@ -231,7 +223,6 @@ def _generate_one(
             audio_bytes=audio_bytes,
             label=task.word_slug,
             voice_id=task.voice.id,
-            voice_code=task.voice_code,
             provider=provider_code,
             lang=generation_language,
         ),

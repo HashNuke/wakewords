@@ -88,7 +88,6 @@ class AugmentTests(unittest.TestCase):
                 audio_bytes=_wav_bytes(),
                 label="hey-astra-now",
                 voice_id="voice-107",
-                voice_code="cr107",
                 provider="cr",
                 lang="en",
             )
@@ -117,7 +116,6 @@ class AugmentTests(unittest.TestCase):
                     audio_bytes=_wav_bytes(),
                     label="yes",
                     voice_id="voice-1",
-                    voice_code="cr1",
                     provider="cr",
                     lang="en",
                 ),
@@ -186,7 +184,6 @@ class AugmentTests(unittest.TestCase):
                 audio_bytes=_wav_bytes(duration_ms=250),
                 label="yes",
                 voice_id="voice-1",
-                voice_code="cr1",
                 provider="cr",
                 lang="en",
             )
@@ -194,7 +191,6 @@ class AugmentTests(unittest.TestCase):
                 audio_bytes=_wav_bytes(duration_ms=1000),
                 label="no",
                 voice_id="voice-2",
-                voice_code="cr2",
                 provider="cr",
                 lang="en",
             )
@@ -202,7 +198,6 @@ class AugmentTests(unittest.TestCase):
                 audio_bytes=_wav_bytes(duration_ms=1000),
                 label="up",
                 voice_id="voice-3",
-                voice_code="cr3",
                 provider="cr",
                 lang="en",
             )
@@ -251,7 +246,6 @@ class AugmentTests(unittest.TestCase):
                     audio_bytes=_wav_bytes(),
                     label="yes",
                     voice_id="voice-1",
-                    voice_code="cr1",
                     provider="cr",
                     lang="en",
                 ),
@@ -286,7 +280,6 @@ class AugmentTests(unittest.TestCase):
                     audio_bytes=_wav_bytes(),
                     label="yes",
                     voice_id="voice-1",
-                    voice_code="cr1",
                     provider="cr",
                     lang="en",
                 ),

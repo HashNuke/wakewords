@@ -216,7 +216,6 @@ class GenerateCommandTests(unittest.TestCase):
                 GenerationPrompt(tts_input="Astra", label="astra"),
             ],
             voices=[voice],
-            voice_codes={voice.id: "cr1"},
             provider="cr",
         )
 
@@ -302,7 +301,6 @@ class GenerateCommandTests(unittest.TestCase):
             label="hey-astra",
             provider="cr",
             voice_id="voice-1",
-            voice_code="cr1",
             sample_id="sample-1",
         )
 
@@ -316,7 +314,7 @@ class GenerateCommandTests(unittest.TestCase):
         logger.warning.assert_called_once()
         log_args = logger.warning.call_args.args
         self.assertIn("VAD detected no speech", log_args[0])
-        self.assertEqual(log_args[1:], ("Hey Astra", "hey-astra", "cr", "voice-1", "cr1", "sample-1"))
+        self.assertEqual(log_args[1:], ("Hey Astra", "hey-astra", "cr", "voice-1", "sample-1"))
 
 
 class _FakeProvider:

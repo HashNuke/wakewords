@@ -56,7 +56,6 @@ class CleanTests(unittest.TestCase):
                 audio_bytes=_wav_bytes(),
                 label="yes",
                 voice_id="voice-1",
-                voice_code="cr1",
                 provider="cr",
                 lang="en",
             )
@@ -89,7 +88,6 @@ class CleanTests(unittest.TestCase):
                 audio_bytes=_wav_bytes(),
                 label="yes",
                 voice_id="voice-1",
-                voice_code="cr1",
                 provider="cr",
                 lang="en",
             )

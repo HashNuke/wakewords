@@ -22,7 +22,6 @@ class CheckTests(unittest.TestCase):
                 audio_bytes=_wav_bytes(duration_ms=500),
                 label="dexa",
                 voice_id="voice-1",
-                voice_code="cr1",
                 provider="cr",
                 lang="en",
             )
@@ -61,7 +60,6 @@ class CheckTests(unittest.TestCase):
                 audio_bytes=_wav_bytes(duration_ms=500),
                 label="dexa",
                 voice_id="voice-1",
-                voice_code="cr1",
                 provider="cr",
                 lang="en",
             )
@@ -98,7 +96,6 @@ class CheckTests(unittest.TestCase):
                 audio_bytes=_wav_bytes(duration_ms=500),
                 label="dexa",
                 voice_id="voice-1",
-                voice_code="cr1",
                 provider="cr",
                 lang="en",
             )

@@ -31,7 +31,6 @@ class GeneratedAudioContext:
     label: str
     provider: str
     voice_id: str
-    voice_code: str
     sample_id: str
 
 
@@ -45,12 +44,11 @@ def prepare_generated_audio(audio_bytes: bytes, *, context: GeneratedAudioContex
     processed_audio = trim_wav_to_speech(audio_bytes)
     if processed_audio is None:
         logger.warning(
-            "Skipping generated sample because VAD detected no speech: prompt=%r label=%s provider=%s voice_id=%s voice_code=%s sample_id=%s",
+            "Skipping generated sample because VAD detected no speech: prompt=%r label=%s provider=%s voice_id=%s sample_id=%s",
             context.prompt,
             context.label,
             context.provider,
             context.voice_id,
-            context.voice_code,
             context.sample_id,
         )
     return processed_audio

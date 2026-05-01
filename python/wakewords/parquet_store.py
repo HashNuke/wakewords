@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import re
 import struct
 import tempfile
 import threading
@@ -24,7 +23,6 @@ _SCHEMA = pa.schema(
         pa.field("label", pa.string()),
         pa.field("audio_bytes", pa.binary()),
         pa.field("voice_id", pa.string()),
-        pa.field("voice_code", pa.string()),
         pa.field("provider", pa.string()),
         pa.field("duration_ms", pa.int64()),
         pa.field("lang", pa.string()),
@@ -42,6 +40,7 @@ _SCHEMA = pa.schema(
         pa.field("context_gap_ms", pa.int64()),
         pa.field("created_at", pa.string()),
         pa.field("sha256", pa.string()),
+        pa.field("speech_rms_dbfs", pa.float64()),
     ]
 )
 
@@ -52,8 +51,6 @@ class CustomWordStore:
         self._lock = threading.RLock()
         self._rows: dict[str, dict[str, object]] = {}
         self._augmented_rows: dict[tuple[str, float, str | None, int | None], str] = {}
-        self._voice_codes: dict[tuple[str, str], str] = {}
-        self._provider_counters: dict[str, int] = {}
         self._load()
 
     def get_by_sample_id(self, sample_id: str) -> dict[str, object] | None:
@@ -97,18 +94,6 @@ class CustomWordStore:
                 return None
             return dict(row)
 
-    def voice_code(self, *, provider: str, voice_id: str) -> str:
-        key = (provider, voice_id)
-        with self._lock:
-            code = self._voice_codes.get(key)
-            if code is not None:
-                return code
-            idx = self._provider_counters.get(provider, 0) + 1
-            code = f"{provider}{idx}"
-            self._voice_codes[key] = code
-            self._provider_counters[provider] = idx
-            return code
-
     def upsert(self, row: dict[str, object], *, overwrite: bool) -> bool:
         with self._lock:
             if not self._upsert_locked(row, overwrite=overwrite):
@@ -140,7 +125,6 @@ class CustomWordStore:
                 return []
             self._rows = remaining_rows
             self._rebuild_augmented_rows()
-            self._rebuild_voice_codes()
             self._write()
             return removed
 
@@ -157,7 +141,6 @@ class CustomWordStore:
             sample_id = _require_str(normalized, "sample_id")
             self._rows[sample_id] = normalized
             self._track_augmented_row(normalized)
-            self._track_voice_code(normalized)
 
     def _write(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -176,21 +159,6 @@ class CustomWordStore:
         finally:
             if temp_path is not None:
                 temp_path.unlink(missing_ok=True)
-
-    def _track_voice_code(self, row: dict[str, object]) -> None:
-        provider = _require_str(row, "provider")
-        voice_id = _require_str(row, "voice_id")
-        voice_code = _require_str(row, "voice_code")
-        self._voice_codes[(provider, voice_id)] = voice_code
-        match = re.fullmatch(rf"{re.escape(provider)}(\d+)", voice_code)
-        if match is not None:
-            self._provider_counters[provider] = max(self._provider_counters.get(provider, 0), int(match.group(1)))
-
-    def _rebuild_voice_codes(self) -> None:
-        self._voice_codes = {}
-        self._provider_counters = {}
-        for row in self._rows.values():
-            self._track_voice_code(row)
 
     def _track_augmented_row(self, row: dict[str, object]) -> None:
         if row.get("source_type") != "augmented":
@@ -236,7 +204,6 @@ class CustomWordStore:
             self._rebuild_augmented_rows()
         else:
             self._track_augmented_row(normalized)
-        self._track_voice_code(normalized)
         return True
 
 
@@ -245,7 +212,6 @@ def build_generated_row(
     audio_bytes: bytes,
     label: str,
     voice_id: str,
-    voice_code: str,
     provider: str,
     lang: str | None,
 ) -> dict[str, object]:
@@ -257,7 +223,6 @@ def build_generated_row(
         "label": label,
         "audio_bytes": audio_bytes,
         "voice_id": voice_id,
-        "voice_code": voice_code,
         "provider": provider,
         "duration_ms": duration_ms,
         "lang": lang,
@@ -275,6 +240,7 @@ def build_generated_row(
         "context_gap_ms": None,
         "created_at": datetime.now(UTC).isoformat(),
         "sha256": sha256,
+        "speech_rms_dbfs": None,
     }
 
 
@@ -305,7 +271,6 @@ def build_augmented_row(
         "label": label,
         "audio_bytes": audio_bytes,
         "voice_id": _require_str(source_row, "voice_id"),
-        "voice_code": _require_str(source_row, "voice_code"),
         "provider": _require_str(source_row, "provider"),
         "duration_ms": duration_ms,
         "lang": source_row.get("lang"),
@@ -323,6 +288,7 @@ def build_augmented_row(
         "context_gap_ms": context_gap_ms,
         "created_at": datetime.now(UTC).isoformat(),
         "sha256": sha256,
+        "speech_rms_dbfs": None,
     }
 
 
