@@ -24,6 +24,7 @@ from wakewords.lfs import GitLfsPointerError
 from wakewords.project import init_project
 from wakewords.providers.base import GenerationPrompt, VoiceSelectionConfig
 from wakewords.providers import get_provider
+from wakewords.quality import backfill_speech_rms_dbfs
 from wakewords.train import DEFAULT_MODEL_NAME, train_model
 
 logger = logging.getLogger(__name__)
@@ -149,6 +150,7 @@ class DataTools:
         train_filename: str = "train_manifest.jsonl",
         validate_filename: str = "validation_manifest.jsonl",
         test_filename: str = "test_manifest.jsonl",
+        min_speech_dbfs: float | None = None,
         verbose: bool = False,
     ) -> None:
         """Build train/validation/test manifests from Parquet custom words and Google Speech Commands."""
@@ -159,6 +161,7 @@ class DataTools:
             validate_ratio=validate_ratio,
             test_ratio=test_ratio,
             langs=_parse_csv(langs),
+            min_speech_dbfs=min_speech_dbfs,
             train_filename=train_filename,
             validate_filename=validate_filename,
             test_filename=test_filename,
@@ -208,6 +211,21 @@ class DataTools:
 
         for line in stats.lines():
             print(line)
+
+    def backfill_speech_rms(
+        self,
+        data_dir: str = "data",
+        overwrite: bool = False,
+        verbose: bool = False,
+    ) -> None:
+        """Compute speech_rms_dbfs for generated rows and copy it to augmented rows."""
+        _configure_logging(verbose=verbose)
+        changed = backfill_speech_rms_dbfs(
+            parquet_path=Path(data_dir) / "custom_words.parquet",
+            overwrite=overwrite,
+        )
+        print(Path(data_dir) / "custom_words.parquet")
+        print(f"updated_rows: {changed}")
 
     def download(
         self,

@@ -253,6 +253,13 @@ To change split ratios:
 uv run wakewords manifest --train-ratio 70 --validate-ratio 20 --test-ratio 10
 ```
 
+To exclude quiet custom-word parents and all augmented children derived from
+them, pass a minimum speech RMS threshold in dBFS:
+
+```sh
+uv run wakewords manifest --min-speech-dbfs -30
+```
+
 This command reads `data/custom_words.parquet`, materializes custom-word WAVs
 under `data/custom-words/<label>/`, performs a deterministic per-label split,
 and writes manifests under `data/manifests/`:

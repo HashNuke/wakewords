@@ -236,6 +236,7 @@ class GenerateCommandTests(unittest.TestCase):
             with (
                 mock.patch("wakewords.providers.cartesia._client", return_value=client),
                 mock.patch("wakewords.generate.prepare_generated_audio", side_effect=lambda audio_bytes, *, context: audio_bytes),
+                mock.patch("wakewords.generate.speech_rms_dbfs", return_value=-18.25),
             ):
                 outputs = generate_audio(
                     provider=provider,
@@ -262,6 +263,7 @@ class GenerateCommandTests(unittest.TestCase):
             self.assertEqual(rows[0]["label"], "astra")
             self.assertNotIn("filename", rows[0])
             self.assertIsInstance(rows[0]["audio_bytes"], bytes)
+            self.assertEqual(rows[0]["speech_rms_dbfs"], -18.25)
 
     def test_cartesia_generate_skips_parquet_row_when_vad_detects_no_speech(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

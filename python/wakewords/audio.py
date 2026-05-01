@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import logging
+import math
 import struct
 import threading
 import wave
@@ -68,6 +69,24 @@ def trim_wav_to_speech(
 def wav_has_speech(audio_bytes: bytes) -> bool:
     wav_data = _read_pcm16_mono_wav(audio_bytes)
     return bool(_speech_timestamps(wav_data.samples, sample_rate=wav_data.sample_rate))
+
+
+def speech_rms_dbfs(audio_bytes: bytes) -> float | None:
+    wav_data = _read_pcm16_mono_wav(audio_bytes)
+    timestamps = _speech_timestamps(wav_data.samples, sample_rate=wav_data.sample_rate)
+    speech_samples: list[int] = []
+    for timestamp in timestamps:
+        start = max(_timestamp_frame(timestamp, "start"), 0)
+        end = min(_timestamp_frame(timestamp, "end"), len(wav_data.samples))
+        if end > start:
+            speech_samples.extend(wav_data.samples[start:end])
+    if not speech_samples:
+        return None
+
+    rms = math.sqrt(sum(sample * sample for sample in speech_samples) / len(speech_samples))
+    if rms == 0:
+        return -math.inf
+    return 20 * math.log10(rms / 32768.0)
 
 
 class _WavData:

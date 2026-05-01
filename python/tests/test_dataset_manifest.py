@@ -9,7 +9,7 @@ from pathlib import Path
 
 from wakewords.dataset_manifest import build_split_manifests
 from wakewords.lfs import GitLfsPointerError
-from wakewords.parquet_store import CustomWordStore, build_generated_row
+from wakewords.parquet_store import CustomWordStore, build_augmented_row, build_generated_row
 
 
 class DatasetManifestTests(unittest.TestCase):
@@ -110,6 +110,67 @@ class DatasetManifestTests(unittest.TestCase):
             self.assertEqual(len(entries), 1)
             self.assertIn("custom-words/boston", str(entries[0]["audio_filepath"]))
             self.assertEqual(len(list((data_dir / "custom-words" / "boston").glob("*.wav"))), 1)
+
+    def test_build_split_manifests_filters_quiet_generated_parent_and_augmented_children(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_dir = Path(tmp_dir)
+            (project_dir / "config.json").write_text(
+                json.dumps({"custom_words": [{"tts_input": "Yes", "label": "yes"}]}) + "\n",
+                encoding="utf-8",
+            )
+            data_dir = project_dir / "data"
+            store = CustomWordStore(data_dir / "custom_words.parquet")
+            quiet = build_generated_row(
+                audio_bytes=_wav_bytes(),
+                label="yes",
+                voice_id="quiet",
+                provider="cr",
+                lang="en",
+                speech_rms_dbfs=-31.0,
+            )
+            loud = build_generated_row(
+                audio_bytes=_wav_bytes(),
+                label="yes",
+                voice_id="loud",
+                provider="cr",
+                lang="en",
+                speech_rms_dbfs=-29.0,
+            )
+            quiet_augmented = build_augmented_row(
+                audio_bytes=_wav_bytes(),
+                source_row=quiet,
+                tempo=1.05,
+                noise_type="rain",
+                snr=10,
+            )
+            loud_augmented = build_augmented_row(
+                audio_bytes=_wav_bytes(),
+                source_row=loud,
+                tempo=1.05,
+                noise_type="rain",
+                snr=10,
+            )
+            store.upsert_many(
+                [
+                    quiet,
+                    quiet_augmented,
+                    loud,
+                    loud_augmented,
+                ],
+                overwrite=False,
+            )
+
+            build_split_manifests(
+                data_dir=data_dir,
+                train_ratio=1,
+                validate_ratio=0,
+                test_ratio=0,
+                min_speech_dbfs=-30.0,
+            )
+
+            entries = _read_jsonl(data_dir / "manifests" / "train_manifest.jsonl")
+            audio_filenames = sorted(Path(str(entry["audio_filepath"])).name for entry in entries)
+            self.assertEqual(audio_filenames, sorted([f"{loud['sample_id']}.wav", f"{loud_augmented['sample_id']}.wav"]))
 
     def test_build_split_manifests_includes_configured_google_words_except_background_noise(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import logging
 from pathlib import Path
 
 from tqdm import tqdm
 
+from wakewords.audio import speech_rms_dbfs
 from wakewords.parquet_store import CustomWordStore, build_generated_row
 from wakewords.providers.base import GeneratedAudioContext, GenerationPrompt, TTSProvider, Voice, VoiceSelectionConfig, prepare_generated_audio
+
+logger = logging.getLogger(__name__)
 
 
 def generate_audio(
@@ -218,6 +222,7 @@ def _generate_one(
     if audio_bytes is None:
         return False
 
+    rms_dbfs = _speech_rms_dbfs_or_none(audio_bytes, sample_id=task.sample_id)
     store.upsert(
         build_generated_row(
             audio_bytes=audio_bytes,
@@ -225,6 +230,7 @@ def _generate_one(
             voice_id=task.voice.id,
             provider=provider_code,
             lang=generation_language,
+            speech_rms_dbfs=rms_dbfs,
         ),
         overwrite=overwrite,
     )
@@ -240,3 +246,11 @@ def _generated_sample_id(*, label: str, provider: str, voice_id: str) -> str:
     import hashlib
 
     return hashlib.sha256(f"generated\0{label}\0{provider}\0{voice_id}".encode("utf-8")).hexdigest()
+
+
+def _speech_rms_dbfs_or_none(audio_bytes: bytes, *, sample_id: str) -> float | None:
+    try:
+        return speech_rms_dbfs(audio_bytes)
+    except Exception as exc:
+        logger.warning("Could not compute speech_rms_dbfs for generated sample %s: %s", sample_id, exc)
+        return None

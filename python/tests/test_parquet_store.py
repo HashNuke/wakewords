@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 from wakewords.parquet_store import CustomWordStore, build_augmented_row, build_generated_row, probe_wav_bytes
+from wakewords.quality import backfill_speech_rms_dbfs
 
 
 class CustomWordStoreTests(unittest.TestCase):
@@ -95,6 +96,7 @@ class CustomWordStoreTests(unittest.TestCase):
                 voice_id="voice-123",
                 provider="cr",
                 lang="en",
+                speech_rms_dbfs=-24.5,
             )
             augmented = build_augmented_row(
                 audio_bytes=_wav_bytes(duration_ms=500),
@@ -117,6 +119,7 @@ class CustomWordStoreTests(unittest.TestCase):
             self.assertIsNotNone(found)
             assert found is not None
             self.assertEqual(found["sample_id"], augmented["sample_id"])
+            self.assertEqual(found["speech_rms_dbfs"], -24.5)
 
     def test_find_augmented_updates_after_delete(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -178,6 +181,32 @@ class CustomWordStoreTests(unittest.TestCase):
         self.assertEqual(sample_rate, 16000)
         self.assertEqual(channels, 1)
         self.assertEqual(duration_ms, 250)
+
+    def test_backfill_speech_rms_updates_generated_rows_and_augmented_children(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            store = CustomWordStore(Path(tmp_dir) / "custom_words.parquet")
+            source = build_generated_row(
+                audio_bytes=_wav_bytes(),
+                label="dexa",
+                voice_id="voice-123",
+                provider="cr",
+                lang="en",
+            )
+            augmented = build_augmented_row(
+                audio_bytes=_wav_bytes(duration_ms=500),
+                source_row=source,
+                tempo=1.05,
+                noise_type="rain",
+                snr=10,
+            )
+            store.upsert_many([source, augmented], overwrite=False)
+
+            with mock.patch("wakewords.quality.speech_rms_dbfs", return_value=-27.0):
+                changed = backfill_speech_rms_dbfs(parquet_path=store.path)
+
+            self.assertEqual(changed, 2)
+            rows = CustomWordStore(store.path).rows()
+            self.assertEqual({row["source_type"]: row["speech_rms_dbfs"] for row in rows}, {"generated": -27.0, "augmented": -27.0})
 
 
 def _wav_bytes(*, duration_ms: int = 250) -> bytes:

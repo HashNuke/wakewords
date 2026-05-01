@@ -214,6 +214,7 @@ def build_generated_row(
     voice_id: str,
     provider: str,
     lang: str | None,
+    speech_rms_dbfs: float | None = None,
 ) -> dict[str, object]:
     sample_rate, channels, duration_ms = probe_wav_bytes(audio_bytes)
     sha256 = hashlib.sha256(audio_bytes).hexdigest()
@@ -240,7 +241,7 @@ def build_generated_row(
         "context_gap_ms": None,
         "created_at": datetime.now(UTC).isoformat(),
         "sha256": sha256,
-        "speech_rms_dbfs": None,
+        "speech_rms_dbfs": speech_rms_dbfs,
     }
 
 
@@ -288,7 +289,7 @@ def build_augmented_row(
         "context_gap_ms": context_gap_ms,
         "created_at": datetime.now(UTC).isoformat(),
         "sha256": sha256,
-        "speech_rms_dbfs": None,
+        "speech_rms_dbfs": source_row.get("speech_rms_dbfs"),
     }
 
 

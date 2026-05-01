@@ -5,7 +5,7 @@ import unittest
 import wave
 from unittest import mock
 
-from wakewords.audio import trim_wav_to_speech
+from wakewords.audio import speech_rms_dbfs, trim_wav_to_speech
 from wakewords.parquet_store import probe_wav_bytes
 
 
@@ -73,6 +73,19 @@ class AudioTrimTests(unittest.TestCase):
             trimmed = trim_wav_to_speech(audio_bytes)
 
         self.assertEqual(trimmed, audio_bytes)
+
+    def test_speech_rms_dbfs_uses_only_vad_speech_segments(self) -> None:
+        audio_bytes = _wav_bytes(_silence(100) + _tone(200) + _silence(100))
+
+        with mock.patch(
+            "wakewords.audio._speech_timestamps",
+            return_value=[{"start": _frames(100), "end": _frames(300)}],
+        ):
+            rms_dbfs = speech_rms_dbfs(audio_bytes)
+
+        self.assertIsNotNone(rms_dbfs)
+        assert rms_dbfs is not None
+        self.assertAlmostEqual(rms_dbfs, -10.31, places=2)
 
 
 def _silence(duration_ms: int) -> list[int]:

@@ -18,6 +18,7 @@ def build_split_manifests(
     validate_ratio: int,
     test_ratio: int,
     langs: list[str] | None = None,
+    min_speech_dbfs: float | None = None,
     google_data_dir: Path | None = None,
     train_filename: str = "train_manifest.jsonl",
     validate_filename: str = "validation_manifest.jsonl",
@@ -34,7 +35,12 @@ def build_split_manifests(
         raise ValueError("At least one split ratio must be > 0.")
 
     data_dir.mkdir(parents=True, exist_ok=True)
-    grouped_entries = _load_grouped_entries(data_dir=data_dir, google_data_dir=google_data_dir, langs=langs)
+    grouped_entries = _load_grouped_entries(
+        data_dir=data_dir,
+        google_data_dir=google_data_dir,
+        langs=langs,
+        min_speech_dbfs=min_speech_dbfs,
+    )
     split_entries = {"train": [], "validate": [], "test": []}
 
     for entries in grouped_entries.values():
@@ -56,7 +62,13 @@ def build_split_manifests(
     return output_paths
 
 
-def _load_grouped_entries(*, data_dir: Path, google_data_dir: Path | None, langs: list[str] | None) -> dict[str, list[dict[str, object]]]:
+def _load_grouped_entries(
+    *,
+    data_dir: Path,
+    google_data_dir: Path | None,
+    langs: list[str] | None,
+    min_speech_dbfs: float | None,
+) -> dict[str, list[dict[str, object]]]:
     grouped: dict[str, list[dict[str, object]]] = {}
     config_path = data_dir.parent / "config.json"
     configured_custom_labels = _load_configured_custom_labels(config_path)
@@ -66,7 +78,12 @@ def _load_grouped_entries(*, data_dir: Path, google_data_dir: Path | None, langs
             context="building manifests from custom words",
             include_hint="data/custom_words.parquet",
         )
-    for entry in _materialize_custom_word_entries(data_dir, configured_custom_labels, langs=langs):
+    for entry in _materialize_custom_word_entries(
+        data_dir,
+        configured_custom_labels,
+        langs=langs,
+        min_speech_dbfs=min_speech_dbfs,
+    ):
         grouped.setdefault(str(entry["label"]), []).append(entry)
 
     configured_google_words = _load_configured_google_words(config_path)
@@ -83,7 +100,13 @@ def _load_grouped_entries(*, data_dir: Path, google_data_dir: Path | None, langs
     return grouped
 
 
-def _materialize_custom_word_entries(data_dir: Path, labels: list[str], *, langs: list[str] | None) -> list[dict[str, object]]:
+def _materialize_custom_word_entries(
+    data_dir: Path,
+    labels: list[str],
+    *,
+    langs: list[str] | None,
+    min_speech_dbfs: float | None,
+) -> list[dict[str, object]]:
     parquet_path = data_dir / "custom_words.parquet"
     materialized_dir = data_dir / "custom-words"
     if materialized_dir.exists():
@@ -94,15 +117,19 @@ def _materialize_custom_word_entries(data_dir: Path, labels: list[str], *, langs
     rows = CustomWordStore(parquet_path).rows()
     label_set = set(labels)
     lang_set = set(langs) if langs else None
+    excluded_parent_sample_ids = _quiet_generated_sample_ids(rows, min_speech_dbfs=min_speech_dbfs)
 
     entries: list[dict[str, object]] = []
     for row in rows:
         label = row.get("label")
         lang = row.get("lang")
         sample_id = row.get("sample_id")
+        parent_sample_id = row.get("parent_sample_id")
         audio_bytes = row.get("audio_bytes")
         duration_ms = row.get("duration_ms")
         if not isinstance(label, str) or not isinstance(sample_id, str):
+            continue
+        if sample_id in excluded_parent_sample_ids or parent_sample_id in excluded_parent_sample_ids:
             continue
         if label not in label_set:
             continue
@@ -124,6 +151,19 @@ def _materialize_custom_word_entries(data_dir: Path, labels: list[str], *, langs
             }
         )
     return entries
+
+
+def _quiet_generated_sample_ids(rows: list[dict[str, object]], *, min_speech_dbfs: float | None) -> set[str]:
+    if min_speech_dbfs is None:
+        return set()
+    return {
+        sample_id
+        for row in rows
+        if row.get("source_type") == "generated"
+        and isinstance((sample_id := row.get("sample_id")), str)
+        and isinstance((speech_rms_dbfs := row.get("speech_rms_dbfs")), float)
+        and speech_rms_dbfs < min_speech_dbfs
+    }
 
 
 def _default_google_speech_commands_dir(data_dir: Path) -> Path:
