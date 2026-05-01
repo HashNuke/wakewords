@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 import json
 import secrets
-import shutil
-from importlib import resources
+import tempfile
+import urllib.request
+import zipfile
 from pathlib import Path
 
 from wakewords.augment import (
@@ -58,6 +60,11 @@ CUSTOM_WORDS_SAMPLE = [
     {"tts_input": "Tokyo", "label": "tokyo"}
 ]
 
+BACKGROUND_AUDIO_URL = (
+    "https://github.com/HashNuke/wakewords/releases/download/"
+    "background-audio-r1/background-noise-r1.zip"
+)
+
 
 def init_project(project_dir: Path) -> list[Path]:
     data_dir = project_dir / "data"
@@ -65,19 +72,12 @@ def init_project(project_dir: Path) -> list[Path]:
     config_path = project_dir / "config.json"
     gitignore_path = project_dir / ".gitignore"
 
-    data_dir.mkdir(parents=True, exist_ok=True)
-    background_audio_dir.mkdir(parents=True, exist_ok=True)
-
-    background_noise_files = resources.files("wakewords.google_scd_background_noise")
-    for resource in background_noise_files.iterdir():
-        if not resource.is_file() or resource.name == "__init__.py":
-            continue
-        destination = background_audio_dir / resource.name
-        with resources.as_file(resource) as source:
-            shutil.copyfile(source, destination)
-
     if config_path.exists():
         raise FileExistsError(f"Refusing to overwrite existing config: {config_path}")
+
+    data_dir.mkdir(parents=True, exist_ok=True)
+    background_audio_dir.mkdir(parents=True, exist_ok=True)
+    _download_background_audio(background_audio_dir)
 
     config = {
         "custom_words": CUSTOM_WORDS_SAMPLE,
@@ -101,6 +101,46 @@ def init_project(project_dir: Path) -> list[Path]:
     _ensure_gitignore_entry(gitignore_path, "diagnostics/")
 
     return [data_dir, background_audio_dir, config_path, gitignore_path]
+
+
+def _download_background_audio(background_audio_dir: Path, *, url: str = BACKGROUND_AUDIO_URL) -> None:
+    with tempfile.NamedTemporaryFile(suffix=".zip") as archive_file:
+        with urllib.request.urlopen(url, timeout=60) as response:
+            archive_file.write(response.read())
+        archive_file.flush()
+        _extract_background_audio_archive(Path(archive_file.name), background_audio_dir)
+
+
+def _extract_background_audio_archive(archive_path: Path, background_audio_dir: Path) -> None:
+    with zipfile.ZipFile(archive_path) as archive:
+        file_infos = [info for info in archive.infolist() if not info.is_dir()]
+        common_prefix = _zip_common_directory_prefix(info.filename for info in file_infos)
+        for info in file_infos:
+            member_path = Path(info.filename)
+            if member_path.is_absolute() or ".." in member_path.parts:
+                raise ValueError(f"Unsafe background audio archive member: {info.filename}")
+
+            output_parts = member_path.parts[len(common_prefix) :]
+            if not output_parts:
+                continue
+            output_path = background_audio_dir.joinpath(*output_parts)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(info) as source, output_path.open("wb") as destination:
+                destination.write(source.read())
+
+
+def _zip_common_directory_prefix(filenames: Iterable[str]) -> tuple[str, ...]:
+    paths = [Path(str(filename)).parts for filename in filenames]
+    if not paths:
+        return ()
+    first_parts = paths[0][:-1]
+    prefix: list[str] = []
+    for index, part in enumerate(first_parts):
+        if all(len(path) > index + 1 and path[index] == part for path in paths):
+            prefix.append(part)
+        else:
+            break
+    return tuple(prefix)
 
 
 def _ensure_gitignore_entry(gitignore_path: Path, entry: str) -> None:

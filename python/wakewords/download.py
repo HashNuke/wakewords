@@ -8,9 +8,13 @@ from urllib.request import Request, urlopen
 
 from tqdm import tqdm
 
+from wakewords.project import BACKGROUND_AUDIO_URL, _extract_background_audio_archive
+
 GOOGLE_SPEECH_COMMANDS_URL = "http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz"
 GOOGLE_SPEECH_COMMANDS_ARCHIVE = "speech_commands_v0.02.tar.gz"
 GOOGLE_SPEECH_COMMANDS_DIR = "google-speech-commands"
+BACKGROUND_AUDIO_ARCHIVE = "background-noise-r1.zip"
+BACKGROUND_AUDIO_DIR = "background_audio"
 
 
 def download_datasets(
@@ -53,6 +57,12 @@ def _download_selected(
     dataset_dir = data_dir / GOOGLE_SPEECH_COMMANDS_DIR
     _extract_tar(archive_path, dataset_dir, description="Extract Google Speech Commands")
     outputs.append(dataset_dir)
+
+    background_archive_path = downloads_dir / BACKGROUND_AUDIO_ARCHIVE
+    _download_file(BACKGROUND_AUDIO_URL, background_archive_path, description="Background Audio")
+    background_audio_dir = data_dir / BACKGROUND_AUDIO_DIR
+    _extract_zip(background_archive_path, background_audio_dir)
+    outputs.append(background_audio_dir)
 
     return outputs
 
@@ -98,3 +108,10 @@ def _safe_extract_member(archive: tarfile.TarFile, member: tarfile.TarInfo, outp
     if output_root != target and output_root not in target.parents:
         raise RuntimeError(f"Archive member escapes output directory: {member.name}")
     archive.extract(member, output_dir)
+
+
+def _extract_zip(archive_path: Path, output_dir: Path) -> None:
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    _extract_background_audio_archive(archive_path, output_dir)

@@ -28,7 +28,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["wakewords"]
-artifacts = ["wakewords/google_scd_background_noise/*", "wakewords/assets/*"]
+artifacts = ["wakewords/assets/*"]
 
 [dependency-groups]
 dev = [
