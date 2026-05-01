@@ -130,6 +130,8 @@ class InitProjectTests(unittest.TestCase):
                 archive.writestr("background_audio/manifest.jsonl", "{}\n")
                 archive.writestr("background_audio/noise.wav", b"wav")
                 archive.writestr("background_audio/README.md", "credits\n")
+                archive.writestr("__MACOSX/background_audio/._noise.wav", b"metadata")
+                archive.writestr(".DS_Store", b"metadata")
 
             _extract_background_audio_archive(archive_path, output_dir)
 
@@ -137,6 +139,8 @@ class InitProjectTests(unittest.TestCase):
                 sorted(path.name for path in output_dir.iterdir()),
                 ["README.md", "manifest.jsonl", "noise.wav"],
             )
+            self.assertFalse((output_dir / "background_audio").exists())
+            self.assertFalse((output_dir / "__MACOSX").exists())
 
     def test_background_audio_url_points_to_release_asset(self) -> None:
         self.assertEqual(

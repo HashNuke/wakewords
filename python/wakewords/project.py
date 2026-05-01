@@ -119,8 +119,13 @@ def _extract_background_audio_archive(archive_path: Path, background_audio_dir: 
             member_path = Path(info.filename)
             if member_path.is_absolute() or ".." in member_path.parts:
                 raise ValueError(f"Unsafe background audio archive member: {info.filename}")
+            if "__MACOSX" in member_path.parts or member_path.name == ".DS_Store":
+                continue
 
-            output_parts = member_path.parts[len(common_prefix) :]
+            if member_path.parts and member_path.parts[0] == background_audio_dir.name:
+                output_parts = member_path.parts[1:]
+            else:
+                output_parts = member_path.parts[len(common_prefix) :]
             if not output_parts:
                 continue
             output_path = background_audio_dir.joinpath(*output_parts)
